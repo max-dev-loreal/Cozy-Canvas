@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cozy-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-cozy_canvas}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../migrations:/migrations:ro
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2023-05-18T00-05-36Z
+    container_name: cozy-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cozyadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cozysecret}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
