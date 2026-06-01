@@ -1,48 +1,41 @@
-# Cozy Canvas Frontend - Vercel Deployment Guide
+# Cozy Canvas - Frontend
 
-Этот каталог содержит фронтенд-часть монорепозитория **Cozy Canvas**, представляющую собой ультрасовременный и отзывчивый интерактивный бесконечный холст на HTML5, CSS3 и D3.js.
+This directory contains the frontend part of the **Cozy Canvas** monorepo, which is an ultra-modern and responsive interactive infinite canvas built with HTML5, CSS3, and D3.js.
 
-## Локальный запуск (Vite)
+## Local Run (Vite)
 
-1. Установите зависимости:
+1. Install dependencies:
    ```bash
    npm install
    ```
-2. Запустите dev-сервер:
+
+2. Start the dev server:
    ```bash
    npm run dev
    ```
-   Фронтенд автоматически настроит проксирование запросов к бэкенду на `http://localhost:8080` для всех путей, начинающихся с `/api`.
 
----
+   The frontend will automatically proxy API requests to the backend at `http://localhost:8080` for all paths starting with `/api`.
 
-## Деплой на Vercel 🚀
+## Deploy to Vercel 🚀
 
-Интерактивный холст спроектирован так, что его можно с легкостью захостить как абсолютно статичный сайт с динамическими запросами к Go API (серверу баз данных), либо полностью автономно с хранением данных в LocalStorage.
+The interactive canvas is designed to be easily hosted as a fully static site with dynamic requests to the Go API (database server), or completely autonomously with data stored in LocalStorage.
 
-### Шаг 1: Подготовка к импорту в Vercel
+### Step 1: Prepare for Import to Vercel
 
-Вы можете импортировать монорепозиторий целиком прямо из вашего GitHub. В процессе импорта вам нужно будет указать **Root Directory** для вашего фронтенда.
+You can import the entire monorepo directly from your GitHub. During the import process, you will need to specify the **Root Directory** for your frontend.
 
-### Шаг 2: Настройка проекта в панели Vercel
+### Step 2: Project Settings in Vercel Dashboard
 
-При создании нового проекта на Vercel укажите следующие параметры:
+When creating a new project on Vercel, specify the following parameters:
 
-1. **Framework Preset**: Выберите **Vite** или **Other / Vanilla JS** (так как проект использует стандартную конфигурацию Vite).
-2. **Root Directory**: Укажите `website` (это корневая папка фронтенда в монорепозитории).
-3. **Build Command**:
-   ```bash
-   npm run build
-   ```
-4. **Output Directory**: `dist` (или `.` если деплоите статичную vanilla-версию, но Vite по умолчанию собирает всё в папку `dist`).
-5. **Environment Variables**:
-   Добавьте переменную окружения, чтобы фронтенд знал адрес вашего Go API (если он задеплоен на другом домене):
-   * На данный момент запросы идут относительно текущего хоста (`/api/...`), что является идеальным решением при использовании единого домена с обратным проксированием или Vercel Serverless Functions.
-   * Если ваш Go API развернут отдельно (например, на Render или VPS), вы можете настроить проксирование через файл `vercel.json` в корне папки `website/`.
+1. **Framework Preset**: Select **Vite** or **Other / Vanilla JS**.
+2. **Root Directory**: Specify `website` (this is the frontend folder in the monorepo).
+3. **Build Command**: `npm run build`
+4. **Output Directory**: `dist`
 
-### Шаг 3: Настройка проксирования на Vercel (vercel.json)
+### Step 3: Configure Proxying on Vercel (vercel.json)
 
-Чтобы запросы `/api/...` автоматически направлялись на удаленный Go бэкенд, создайте файл `vercel.json` в этой директории (`website/`) со следующим содержимым:
+To have `/api/...` requests automatically directed to the remote Go backend, create a `vercel.json` file in this directory (`website/`) with the following content:
 
 ```json
 {
@@ -50,13 +43,10 @@
     {
       "source": "/api/(.*)",
       "destination": "https://your-go-backend-api.com/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/$1"
     }
   ]
 }
 ```
-Замените `https://your-go-backend-api.com` на реальный URL вашего развернутого Go-бэкенда.
-После этого любые обращения вашего Canvas к `/api/...` будут прозрачно пересылаться на ваш бэкенд без CORS-ограничений!
+
+Replace `https://your-go-backend-api.com` with the actual URL of your deployed Go backend.
+After this, any calls from your Canvas to `/api/...` will be transparently forwarded to your backend without CORS restrictions!

@@ -19,14 +19,14 @@ const settingPhysics = document.getElementById('setting-physics');
 const settingSpring = document.getElementById('setting-spring');
 const springValueDisplay = document.getElementById('spring-value');
 
-// Auth controls
+// Authentication controls
 const btnLogin = document.getElementById('btn-login');
 const loginBtnText = document.getElementById('login-btn-text');
 const loginModal = document.getElementById('login-modal');
 const btnCloseLogin = document.getElementById('btn-close-login');
 const loginForm = document.getElementById('login-form');
 
-// Auth inputs
+// Authentication inputs
 const registerFields = document.getElementById('register-only-fields');
 const loginUsernameInput = document.getElementById('login-username');
 const loginWord1InputReal = document.getElementById('login-word1');
@@ -34,25 +34,23 @@ const loginWord2InputReal = document.getElementById('login-word2');
 const loginEmailInput = document.getElementById('login-email');
 const loginPasswordInput = document.getElementById('login-password');
 const linkSwitchAuth = document.getElementById('link-switch-auth');
-const btnGoogleLogin = document.getElementById('btn-google-login');
-const googleBtnText = document.getElementById('google-btn-text');
 const modalTitle = document.getElementById('modal-title');
 const modalSubtitle = document.getElementById('modal-subtitle');
 const authSubmitBtn = document.getElementById('auth-submit-btn');
 
-// Toast
+// Notification Toast
 const cozyToast = document.getElementById('cozy-toast');
 
 // Waybar mode toggle
 const btnModeNotes = document.getElementById('mode-notes');
 const btnModeEnv = document.getElementById('mode-env');
 
-// Stats
+// Statsistics
 const coordDisplay = document.getElementById('coord-display');
 const zoomDisplay = document.getElementById('zoom-display');
 const notesCountDisplay = document.getElementById('notes-count');
 
-// Create dynamic SVG layer for connections
+// Create dynamic SVG layer for note connections
 const connectionsSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 connectionsSvg.setAttribute('id', 'connections-svg');
 connectionsSvg.style.position = 'absolute';
@@ -63,7 +61,7 @@ connectionsSvg.style.height = '500000px';
 connectionsSvg.style.pointerEvents = 'none';
 canvasBoard.insertBefore(connectionsSvg, notesContainer);
 
-// State
+// Aplication State
 let zoom = 1.0;
 let panX = 0;
 let panY = 0;
@@ -87,20 +85,20 @@ let noteDragStartY = 0;
 let noteMouseStartX = 0;
 let noteMouseStartY = 0;
 
-// Cursor lerp state
+// Cursor interpolation state
 let targetMouseX = window.innerWidth / 2;
 let targetMouseY = window.innerHeight / 2;
 let cursorX = targetMouseX;
 let cursorY = targetMouseY;
 const cursorLerpFactor = 0.15;
 
-// Panning modifier
+// Panning Modifier Key
 let isSpacePressed = false;
 
-// Toast timer
+// Toast Timer
 let toastTimer = null;
 
-// Settings & linking state
+// Settings & Connection State
 let physicsEnabled = true;
 let springStiffness = 0.08;
 
@@ -111,159 +109,132 @@ let linkPreviewLine = null;
 let simulation = null;
 
 // ==========================================================================
-// Async Storage Wrapper (with Go API integration & LocalStorage fallback)
+// Safe Storage Wrapper (Go API Integration with JWT Authentication)
 // ==========================================================================
+
+let authToken = null;
 
 async function apiFetch(endpoint, method = 'GET', body = null) {
   const headers = {
     'Content-Type': 'application/json',
   };
-  if (currentUser) {
-    headers['X-User-Header'] = currentUser;
+
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
   }
-  
+
   const options = {
     method,
     headers,
   };
+
   if (body) {
     options.body = JSON.stringify(body);
   }
 
-  const response = await fetch(endpoint, options);
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status}`);
+  try {
+    const response = await fetch(endpoint, options);
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return await response.json();
+    }
+    return null;
+  } catch (error) {
+    console.error(`[NETWORK ERROR] Request failed for ${endpoint}:`, error.message);
+    throw error;
   }
-  
-  const contentType = response.headers.get('content-type');
-  if (contentType && contentType.includes('application/json')) {
-    return await response.json();
-  }
-  return null;
 }
 
 const dbService = {
-  // Get all notes
   async getNotes() {
     try {
       return await apiFetch('/api/notes');
     } catch (e) {
-      console.warn("API offline, falling back to LocalStorage for getNotes:", e.message);
+      console.warn('API unavailable. Falling back to offline mode. Data is not synchronized.');
       const data = localStorage.getItem('cozy-canvas-notes-data');
       return data ? JSON.parse(data) : [];
     }
   },
 
-  // Save all notes
   async saveNotes(notesList) {
     try {
       await apiFetch('/api/notes', 'POST', notesList);
     } catch (e) {
-      console.warn("API offline, falling back to LocalStorage for saveNotes:", e.message);
+      console.warn('API unavailable. Temporarily storing notes in local storage.');
       localStorage.setItem('cozy-canvas-notes-data', JSON.stringify(notesList));
     }
   },
 
-  // Get env notes
   async getEnvNotes() {
     try {
       return await apiFetch('/api/env-notes');
     } catch (e) {
-      console.warn("API offline, falling back to LocalStorage for getEnvNotes:", e.message);
+      console.warn('API unavailable. Loading default system configuration.');
       const data = localStorage.getItem('cozy-canvas-env-notes-data');
-      if (data) {
-        return JSON.parse(data);
-      }
+      if (data) return JSON.parse(data);
+
       const defaultEnv = [
         { id: 'env-USER', text: '⚙️ USER\n\nguest_devops', x: window.innerWidth / 2 - 85, y: window.innerHeight / 2 - 280, isEnv: true },
-        { id: 'env-OS', text: '⚙️ OS\n\nWindows 11', x: window.innerWidth / 2 - 85 + 200, y: window.innerHeight / 2 - 85, isEnv: true },
-        { id: 'env-ENV', text: '⚙️ ENV\n\ncozy-staging', x: window.innerWidth / 2 - 85 - 200, y: window.innerHeight / 2 - 85, isEnv: true }
+        { id: 'env-OS', text: '⚙️ OS\n\nLinux (NixOS)', x: window.innerWidth / 2 - 85 + 200, y: window.innerHeight / 2 - 85, isEnv: true },
+        { id: 'env-WM', text: '⚙️ COMPOSITOR\n\nHyprland', x: window.innerWidth / 2 - 85 - 200, y: window.innerHeight / 2 - 85, isEnv: true }
       ];
       localStorage.setItem('cozy-canvas-env-notes-data', JSON.stringify(defaultEnv));
       return defaultEnv;
     }
   },
 
-  // Save env notes
   async saveEnvNotes(envNotesList) {
     try {
       await apiFetch('/api/env-notes', 'POST', envNotesList);
     } catch (e) {
-      console.warn("API offline, falling back to LocalStorage for saveEnvNotes:", e.message);
+      console.warn('API unavailable. Saving environment notes locally.');
       localStorage.setItem('cozy-canvas-env-notes-data', JSON.stringify(envNotesList));
     }
   },
 
-  // Get connections
   async getConnections() {
     try {
       return await apiFetch('/api/connections');
     } catch (e) {
-      console.warn("API offline, falling back to LocalStorage for getConnections:", e.message);
       const data = localStorage.getItem('cozy-canvas-connections-data');
       return data ? JSON.parse(data) : [];
     }
   },
 
-  // Save connections
   async saveConnections(connectionsList) {
     try {
+      localStorage.setItem('cozy-canvas-connections-data', JSON.stringify(connectionsList));
       await apiFetch('/api/connections', 'POST', connectionsList);
     } catch (e) {
-      console.warn("API offline, falling back to LocalStorage for saveConnections:", e.message);
-      localStorage.setItem('cozy-canvas-connections-data', JSON.stringify(connectionsList));
+      console.warn('API unavailable. Saved connections locally.');
     }
   }
 };
 
 // ==========================================================================
-// Initialization & Loading
+// Application Initialization & Data Loading
 // ==========================================================================
 
 async function init() {
-  // Load notes
-  try {
-    notes = await dbService.getNotes();
-  } catch (e) {
-    console.error("Failed to load notes", e);
-    notes = [];
-  }
+  // Session tokens are restored only from sessionStorage
+  // to reduce persistence and limit exposure.
+  currentUser = sessionStorage.getItem('cozy-canvas-user') || null;
+  updateLoginUI();
 
-  // Load env notes
-  try {
-    envNotes = await dbService.getEnvNotes();
-  } catch (e) {
-    console.error("Failed to load env notes", e);
-    envNotes = [];
-  }
+  try { notes = await dbService.getNotes(); } catch (e) { notes = []; }
+  try { envNotes = await dbService.getEnvNotes(); } catch (e) { envNotes = []; }
+  try { connections = await dbService.getConnections(); } catch (e) { connections = []; }
 
-  // Load help panel state
   const isHelpVisible = localStorage.getItem('cozy-canvas-help-visible') !== 'false';
   if (!isHelpVisible) {
     helpPanel.classList.add('hidden');
   }
 
-  // Init local auth database
-  const registeredUsers = localStorage.getItem('cozy-canvas-registered-users');
-  if (!registeredUsers) {
-    const defaultUsers = [
-      { username: 'junior_devops', email: 'dev@cozy.io', password: 'password', codewords: ['ansible', 'terraform'] }
-    ];
-    localStorage.setItem('cozy-canvas-registered-users', JSON.stringify(defaultUsers));
-  }
-
-  currentUser = localStorage.getItem('cozy-canvas-user') || null;
-  updateLoginUI();
-
-  // Load connections
-  try {
-    connections = await dbService.getConnections();
-  } catch (e) {
-    console.error("Failed to load connections", e);
-    connections = [];
-  }
-
-  // Load physics settings
   physicsEnabled = localStorage.getItem('cozy-canvas-setting-physics') !== 'false';
   settingPhysics.checked = physicsEnabled;
 
@@ -273,44 +244,21 @@ async function init() {
   springStiffness = springSliderVal / 100;
   springValueDisplay.textContent = springStiffness.toFixed(2);
 
-  // Reset view to center
   centerView();
-
-  // Render initial view
   renderNotes();
   updateTransform();
   updateStatus();
 
-  // Init physics
   if (physicsEnabled) {
     startPhysicsSimulation();
   }
 
-  // Start cursor loop
   animateCursor();
-
-  // Bind events
   setupEventListeners();
 }
 
-async function saveNotes() {
-  if (currentMode === 'notes') {
-    await dbService.saveNotes(notes);
-  }
-  updateStatus();
-  updateConnections();
-}
-
-async function saveEnvNotes() {
-  if (currentMode === 'env') {
-    await dbService.saveEnvNotes(envNotes);
-  }
-  updateStatus();
-  updateConnections();
-}
-
 // ==========================================================================
-// Toast System
+// Toast Notification System
 // ==========================================================================
 
 function showToast(message) {
@@ -327,17 +275,17 @@ function showToast(message) {
 }
 
 // ==========================================================================
-// Auth UI state
+// Authentication UI State
 // ==========================================================================
 
 function updateLoginUI() {
   if (currentUser) {
     loginBtnText.textContent = currentUser;
-    btnLogin.title = `Вошли как ${currentUser}. Нажмите, чтобы выйти.`;
+    btnLogin.title = `Logged in as ${currentUser}. Click to sign out.`;
     btnLogin.classList.add('accent');
   } else {
-    loginBtnText.textContent = 'Войти';
-    btnLogin.title = 'Войти в Cozy Cluster';
+    loginBtnText.textContent = 'Sign in';
+    btnLogin.title = 'Sign to Cozy Cluster';
     btnLogin.classList.remove('accent');
   }
 
@@ -393,7 +341,7 @@ function screenToCanvas(clientX, clientY) {
 }
 
 // ==========================================================================
-// Note and Connection Rendering
+// Note & Connection Rendering
 // ==========================================================================
 
 function renderNotes() {
@@ -411,7 +359,7 @@ function renderNotes() {
     noteEl.style.left = `${note.x}px`;
     noteEl.style.top = `${note.y}px`;
 
-    // Text area
+    // Note Content Editor
     const textEl = document.createElement('div');
     textEl.className = 'note-text';
     textEl.contentEditable = 'true';
@@ -419,35 +367,35 @@ function renderNotes() {
     textEl.addEventListener('input', async (e) => {
       note.text = e.target.textContent;
       if (currentMode === 'notes') {
-        await saveNotes();
+        await dbService.saveNotes(notes);
       } else {
-        await saveEnvNotes();
+        await dbService.saveEnvNotes(envNotes);
       }
     });
     textEl.addEventListener('blur', async () => {
       if (!note.text.trim()) {
-        note.text = 'Заметка...';
-        textEl.textContent = 'Заметка...';
+        note.text = 'Note...';
+        textEl.textContent = 'Note...';
         if (currentMode === 'notes') {
-          await saveNotes();
+          await dbService.saveNotes(notes);
         } else {
-          await saveEnvNotes();
+          await dbService.saveEnvNotes(envNotes);
         }
       }
     });
 
-    // Delete button
+    // Delete Button
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-delete-note';
     deleteBtn.innerHTML = '✕';
-    deleteBtn.title = 'Удалить заметку';
+    deleteBtn.title = 'Delete Note';
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       deleteNote(note.id);
     });
     noteEl.appendChild(deleteBtn);
 
-    // Mouse interaction
+    // Mouse Interaction
     noteEl.addEventListener('mousedown', (e) => {
       if (e.target.contentEditable === 'true') return;
 
@@ -520,7 +468,6 @@ function updateConnections() {
         line.setAttribute('y2', y2 + 250000);
         line.classList.add('connection-line');
 
-        // Delete connection on click
         line.addEventListener('click', (e) => {
           e.stopPropagation();
           deleteConnection(sId, tId);
@@ -530,7 +477,6 @@ function updateConnections() {
       }
     });
   } else {
-    // Proximity connections for env mode
     const maxDistance = 380;
     for (let i = 0; i < envNotes.length; i++) {
       for (let j = i + 1; j < envNotes.length; j++) {
@@ -577,12 +523,7 @@ async function deleteConnection(sId, tId) {
     updatePhysicsSimulationLinks();
     simulation.alpha(0.3).restart();
   }
-  showToast('🌸 Связь удалена.');
-}
-
-async function saveConnections() {
-  await dbService.saveConnections(connections);
-  updateConnections();
+  showToast('🌸 Connection removed.');
 }
 
 async function createConnection(sId, tId) {
@@ -600,14 +541,14 @@ async function createConnection(sId, tId) {
   }
 
   connections.push({ source: sId, target: tId });
-  await saveConnections();
+  await dbService.saveConnections(connections);
 
   if (physicsEnabled && simulation) {
     updatePhysicsSimulationLinks();
     simulation.alpha(0.5).restart();
   }
 
-  showToast('🌸 Связь установлена!');
+  showToast('🌸 Connection created!');
 }
 
 // ==========================================================================
@@ -620,7 +561,7 @@ async function addNote(x, y) {
 
   const newNote = {
     id: id,
-    text: isEnvMode ? '⚙️ NEW_VAR\n\nvalue...' : 'Новая заметка 🌸\n\nКликни сюда для редактирования...',
+    text: isEnvMode ? '⚙️ NEW_VAR\n\nvalue...' : 'New Note 🌸\n\nClick here to edit...',
     x: x - 85,
     y: y - 85
   };
@@ -628,10 +569,10 @@ async function addNote(x, y) {
   if (isEnvMode) {
     newNote.isEnv = true;
     envNotes.push(newNote);
-    await saveEnvNotes();
+    await dbService.saveEnvNotes(envNotes);
   } else {
     notes.push(newNote);
-    await saveNotes();
+    await dbService.saveNotes(notes);
   }
   renderNotes();
 
@@ -659,10 +600,10 @@ async function deleteNote(id) {
   const isEnvMode = currentMode === 'env';
   if (isEnvMode) {
     envNotes = envNotes.filter(n => n.id !== id);
-    await saveEnvNotes();
+    await dbService.saveEnvNotes(envNotes);
   } else {
     notes = notes.filter(n => n.id !== id);
-    await saveNotes();
+    await dbService.saveNotes(notes);
   }
 
   connections = connections.filter(conn => {
@@ -670,7 +611,7 @@ async function deleteNote(id) {
     const tId = typeof conn.target === 'object' ? conn.target.id : conn.target;
     return sId !== id && tId !== id;
   });
-  await saveConnections();
+  await dbService.saveConnections(connections);
   renderNotes();
 
   if (physicsEnabled) {
@@ -683,13 +624,11 @@ async function deleteNote(id) {
 // ==========================================================================
 
 function setupEventListeners() {
-  // Hotkeys
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
       isSpacePressed = true;
       viewport.style.cursor = 'grab';
     }
-    // Esc resets view or closes menus
     if (e.key === 'Escape') {
       if (!loginModal.classList.contains('hidden')) {
         loginModal.classList.add('hidden');
@@ -710,7 +649,6 @@ function setupEventListeners() {
     }
   });
 
-  // Start canvas pan
   viewport.addEventListener('mousedown', (e) => {
     const isBackground = e.target.classList.contains('viewport') ||
       e.target.classList.contains('canvas-board') ||
@@ -728,7 +666,6 @@ function setupEventListeners() {
     }
   });
 
-  // Cursor move and drag/link logic
   window.addEventListener('mousemove', (e) => {
     targetMouseX = e.clientX;
     targetMouseY = e.clientY;
@@ -741,7 +678,6 @@ function setupEventListeners() {
       viewport.classList.remove('hovering-clickable');
     }
 
-    // Pan canvas
     if (isPanning) {
       const dx = e.clientX - mouseStartX;
       const dy = e.clientY - mouseStartY;
@@ -750,7 +686,6 @@ function setupEventListeners() {
       updateTransform();
     }
 
-    // Drag note
     else if (activeDragNoteId !== null) {
       const activeNotesList = currentMode === 'notes' ? notes : envNotes;
       const currentNote = activeNotesList.find(n => n.id === activeDragNoteId);
@@ -779,7 +714,6 @@ function setupEventListeners() {
       }
     }
 
-    // Link preview
     else if (isLinkingActive) {
       updateLinkPreview(e.clientX, e.clientY);
 
@@ -796,7 +730,6 @@ function setupEventListeners() {
     }
   });
 
-  // Mouse release
   window.addEventListener('mouseup', (e) => {
     if (isPanning) {
       isPanning = false;
@@ -824,21 +757,17 @@ function setupEventListeners() {
       }
       activeDragNoteId = null;
       viewport.classList.remove('dragging-active');
-      saveNotes();
+      dbService.saveNotes(notes);
     }
   });
 
-  // Mouse zoom
   viewport.addEventListener('wheel', (e) => {
     e.preventDefault();
-
     const zoomFactor = 1.08;
     const factor = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
-
     adjustZoom(factor, e.clientX, e.clientY);
   }, { passive: false });
 
-  // Double click canvas to add notes
   viewport.addEventListener('dblclick', (e) => {
     if (currentMode !== 'notes') return;
 
@@ -853,7 +782,6 @@ function setupEventListeners() {
     }
   });
 
-  // Mode switcher listeners
   btnModeNotes.addEventListener('click', () => {
     if (currentMode === 'notes') return;
 
@@ -864,11 +792,8 @@ function setupEventListeners() {
     renderNotes();
     updateStatus();
 
-    if (physicsEnabled) {
-      startPhysicsSimulation();
-    } else {
-      stopPhysicsSimulation();
-    }
+    if (physicsEnabled) startPhysicsSimulation();
+    else stopPhysicsSimulation();
   });
 
   btnModeEnv.addEventListener('click', () => {
@@ -881,14 +806,10 @@ function setupEventListeners() {
     renderNotes();
     updateStatus();
 
-    if (physicsEnabled) {
-      startPhysicsSimulation();
-    } else {
-      stopPhysicsSimulation();
-    }
+    if (physicsEnabled) startPhysicsSimulation();
+    else stopPhysicsSimulation();
   });
 
-  // Toggle help
   btnToggleHelp.addEventListener('click', () => {
     const isHidden = helpPanel.classList.toggle('hidden');
     localStorage.setItem('cozy-canvas-help-visible', (!isHidden).toString());
@@ -897,13 +818,11 @@ function setupEventListeners() {
     }
   });
 
-  // Close help
   btnCloseHelp.addEventListener('click', () => {
     helpPanel.classList.add('hidden');
     localStorage.setItem('cozy-canvas-help-visible', 'false');
   });
 
-  // Toggle settings
   btnToggleSettings.addEventListener('click', () => {
     const isHidden = settingsPanel.classList.toggle('hidden');
     if (!isHidden) {
@@ -911,21 +830,16 @@ function setupEventListeners() {
     }
   });
 
-  // Close settings
   btnCloseSettings.addEventListener('click', () => {
     settingsPanel.classList.add('hidden');
   });
 
-  // Settings change listeners
   settingPhysics.addEventListener('change', (e) => {
     physicsEnabled = e.target.checked;
     localStorage.setItem('cozy-canvas-setting-physics', physicsEnabled);
-    showToast(physicsEnabled ? '🌸 Физика включена' : '🌸 Физика выключена');
-    if (physicsEnabled) {
-      startPhysicsSimulation();
-    } else {
-      stopPhysicsSimulation();
-    }
+    showToast(physicsEnabled ? '🌸 Physics enabled' : '🌸 Physics disabled');
+    if (physicsEnabled) startPhysicsSimulation();
+    else stopPhysicsSimulation();
   });
 
   settingSpring.addEventListener('input', (e) => {
@@ -943,21 +857,22 @@ function setupEventListeners() {
     }
   });
 
-  // Block context menu when creating links
   window.addEventListener('contextmenu', (e) => {
     if (isLinkingActive || e.target.closest('.cozy-note') || e.target.id === 'connections-svg') {
       e.preventDefault();
     }
   });
 
-  // Auth click listener
+  // FIXED: Logout button fully clears sessionStorage tokens
   btnLogin.addEventListener('click', () => {
     if (currentUser) {
-      if (confirm(`Выйти из профиля ${currentUser}?`)) {
-        localStorage.removeItem('cozy-canvas-user');
+      if (confirm(`Sign out of profile ${currentUser}?`)) {
+        sessionStorage.removeItem('cozy-canvas-token');
+        sessionStorage.removeItem('cozy-canvas-user');
+        authToken = null;
         currentUser = null;
         updateLoginUI();
-        showToast('🌸 Вы вышли из Cozy Cluster.');
+        showToast('🌸 Logged out. Session token destroyed.');
       }
     } else {
       authMode = 'login';
@@ -972,46 +887,23 @@ function setupEventListeners() {
     }
   });
 
-  // Close login modal
   btnCloseLogin.addEventListener('click', () => {
     loginModal.classList.add('hidden');
   });
 
-  // Click outside closes modal
   loginModal.addEventListener('mousedown', (e) => {
     if (e.target === loginModal) {
       loginModal.classList.add('hidden');
     }
   });
 
-  // Toggle login/register mode
   linkSwitchAuth.addEventListener('click', () => {
     authMode = authMode === 'login' ? 'register' : 'login';
     syncAuthModeUI();
   });
 
-  // Google sign-in mock
-  btnGoogleLogin.addEventListener('click', () => {
-    btnGoogleLogin.style.pointerEvents = 'none';
-    const oldText = googleBtnText.textContent;
-    googleBtnText.textContent = 'Подключение к Google...';
-
-    setTimeout(() => {
-      const googleUser = 'google_engineer';
-      localStorage.setItem('cozy-canvas-user', googleUser);
-      currentUser = googleUser;
-
-      updateLoginUI();
-      loginModal.classList.add('hidden');
-
-      btnGoogleLogin.style.pointerEvents = 'auto';
-      googleBtnText.textContent = oldText;
-
-      showToast(`🌸 Вошли через Google: ${googleUser}@gmail.com`);
-    }, 1200);
-  });
-
-  // Handle auth submit
+  // FIXED: Local password DB removed. Auth delegated to backend. 
+  // Network errors are handled gracefully.
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -1021,33 +913,21 @@ function setupEventListeners() {
     if (authMode === 'login') {
       try {
         const res = await apiFetch('/api/auth/login', 'POST', { email, password });
-        if (res && res.status === 'success') {
-          localStorage.setItem('cozy-canvas-user', res.username);
+        if (res && res.status === 'success' && res.token) {
+          sessionStorage.setItem('cozy-canvas-token', res.token);
+          sessionStorage.setItem('cozy-canvas-user', res.username);
+          authToken = res.token;
           currentUser = res.username;
+          
           updateLoginUI();
           loginModal.classList.add('hidden');
-          showToast(`🌸 С возвращением, ${currentUser}! Связь установлена.`);
+          showToast(`🌸 Welcome back, ${currentUser}! Session active.`);
           await init();
         } else {
-          showToast('❌ Неверный Email или пароль!');
+          showToast('❌ Invalid Email or Password!');
         }
       } catch (err) {
-        console.warn("Auth API offline, falling back to LocalStorage auth:", err.message);
-        let users = [];
-        const savedUsers = localStorage.getItem('cozy-canvas-registered-users');
-        if (savedUsers) {
-          try { users = JSON.parse(savedUsers); } catch (ex) {}
-        }
-        const user = users.find(u => u.email === email && u.password === password);
-        if (user) {
-          localStorage.setItem('cozy-canvas-user', user.username);
-          currentUser = user.username;
-          updateLoginUI();
-          loginModal.classList.add('hidden');
-          showToast(`🌸 С возвращением, ${currentUser}! (Автономный режим)`);
-        } else {
-          showToast('❌ Неверный Email или пароль!');
-        }
+        showToast('❌ Auth server unreachable. Check your connection.');
       }
     } else {
       const username = loginUsernameInput.value.trim();
@@ -1055,7 +935,7 @@ function setupEventListeners() {
       const word2 = loginWord2InputReal.value.trim();
 
       if (!word1 || !word2) {
-        showToast('❌ Пожалуйста, укажите оба кодовых слова!');
+        showToast('❌ Please provide both code words!');
         return;
       }
 
@@ -1067,86 +947,51 @@ function setupEventListeners() {
           codewords: [word1, word2]
         });
         if (res && res.status === 'success') {
-          localStorage.setItem('cozy-canvas-user', username);
-          currentUser = username;
-          updateLoginUI();
-          loginModal.classList.add('hidden');
-          showToast(`🌸 Профиль ${username} создан в Cozy Cluster!`);
-          await init();
+          showToast(`🌸 Profile ${username} created successfully! You can now log in.`);
+          authMode = 'login';
+          syncAuthModeUI();
         } else {
-          showToast(`❌ Ошибка регистрации: ${res ? res.message : 'Неизвестная ошибка'}`);
+          showToast(`❌ Error: ${res ? res.message : 'Unknown failure'}`);
         }
       } catch (err) {
-        console.warn("Auth API offline, falling back to LocalStorage registration:", err.message);
-        let users = [];
-        const savedUsers = localStorage.getItem('cozy-canvas-registered-users');
-        if (savedUsers) {
-          try { users = JSON.parse(savedUsers); } catch (ex) {}
-        }
-
-        if (users.some(u => u.email === email)) {
-          showToast('❌ Этот email уже зарегистрирован!');
-          return;
-        }
-        if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
-          showToast('❌ Это имя пользователя уже занято!');
-          return;
-        }
-
-        users.push({
-          username: username,
-          email: email,
-          password: password,
-          codewords: [word1, word2]
-        });
-        localStorage.setItem('cozy-canvas-registered-users', JSON.stringify(users));
-
-        localStorage.setItem('cozy-canvas-user', username);
-        currentUser = username;
-        updateLoginUI();
-
-        loginModal.classList.add('hidden');
-        showToast(`🌸 Профиль ${username} создан! (Автономный режим)`);
+        showToast('❌ Failed to send registration request.');
       }
     }
   });
 
-  // Re-align on resize
   window.addEventListener('resize', () => {
     updateTransform();
   });
 }
 
-// Switch auth form labels
 function syncAuthModeUI() {
   if (authMode === 'login') {
     registerFields.classList.add('hidden');
     loginUsernameInput.removeAttribute('required');
     loginWord1InputReal.removeAttribute('required');
     loginWord2InputReal.removeAttribute('required');
-    modalTitle.textContent = 'Вход в Cozy Cluster';
-    modalSubtitle.textContent = 'Подключите ваш профиль инженера';
-    authSubmitBtn.textContent = 'Войти ✨';
+    modalTitle.textContent = 'Login to Cozy Cluster';
+    modalSubtitle.textContent = 'Connect your engineer profile';
+    authSubmitBtn.textContent = 'Login ✨';
 
     const promptTextNode = document.querySelector('.modal-switch-text').childNodes[0];
-    if (promptTextNode) promptTextNode.textContent = 'Еще нет аккаунта? ';
-    linkSwitchAuth.textContent = 'Зарегистрироваться';
+    if (promptTextNode) promptTextNode.textContent = "Don't have an account yet? ";
+    linkSwitchAuth.textContent = 'Sign Up';
   } else {
     registerFields.classList.remove('hidden');
     loginUsernameInput.setAttribute('required', 'true');
     loginWord1InputReal.setAttribute('required', 'true');
     loginWord2InputReal.setAttribute('required', 'true');
-    modalTitle.textContent = 'Регистрация в Cozy Cluster';
-    modalSubtitle.textContent = 'Создайте профиль инженера в один клик';
-    authSubmitBtn.textContent = 'Создать аккаунт ✨';
+    modalTitle.textContent = 'Sign Up for Cozy Cluster';
+    modalSubtitle.textContent = 'Create your engineer profile in one click';
+    authSubmitBtn.textContent = 'Create Account ✨';
 
     const promptTextNode = document.querySelector('.modal-switch-text').childNodes[0];
-    if (promptTextNode) promptTextNode.textContent = 'Уже есть аккаунт? ';
-    linkSwitchAuth.textContent = 'Войти';
+    if (promptTextNode) promptTextNode.textContent = 'Already have an account? ';
+    linkSwitchAuth.textContent = 'Login';
   }
 }
 
-// Custom cursor lerp loop
 function animateCursor() {
   cursorX += (targetMouseX - cursorX) * cursorLerpFactor;
   cursorY += (targetMouseY - cursorY) * cursorLerpFactor;
@@ -1262,7 +1107,6 @@ function startLinking(sourceId, clientX, clientY) {
     linkIndicator.classList.remove('hidden');
   }
 
-  // Dotted preview line
   linkPreviewLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
   linkPreviewLine.classList.add('connection-line-preview');
   connectionsSvg.appendChild(linkPreviewLine);
@@ -1280,7 +1124,6 @@ function updateLinkPreview(clientX, clientY) {
   const startX = sourceNote.x + rOffset;
   const startY = sourceNote.y + rOffset;
 
-  // Translate screen to canvas
   const mouseCanvas = screenToCanvas(clientX, clientY);
 
   linkPreviewLine.setAttribute('x1', startX + 250000);
@@ -1299,7 +1142,6 @@ function finishLinking(clientX, clientY) {
 
   const linkIndicator = document.getElementById('link-indicator');
   if (linkIndicator) {
-    linkIndicator.classList.remove('hidden'); // hidden handled by classList toggle
     linkIndicator.classList.add('hidden');
   }
 
@@ -1322,5 +1164,4 @@ function finishLinking(clientX, clientY) {
   linkSourceNoteId = null;
 }
 
-// Start application
 window.addEventListener('DOMContentLoaded', init);

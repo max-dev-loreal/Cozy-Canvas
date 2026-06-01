@@ -1,3 +1,5 @@
 module cozy-canvas/backend
 
-go 1.20
+go 1.25.0
+
+require github.com/lib/pq v1.12.3

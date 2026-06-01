@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"cozy-canvas/backend/internal/handlers"
 	"cozy-canvas/backend/internal/middleware"
@@ -25,10 +30,13 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	var store handlers.Store
+	var db *sql.DB
+	var err error
 
-	if dbURL != nil && dbURL != "" {
+	// FIXED: Removed nil check that caused compilation error
+	if dbURL != "" {
 		log.Printf("[DB] Connecting to PostgreSQL at %s...\n", dbURL)
-		db, err := sql.Open("postgres", dbURL)
+		db, err = sql.Open("postgres", dbURL)
 		if err != nil {
 			log.Printf("[ERROR] Database connection failed: %v. Falling back to MemoryStore.\n", err)
 			store = handlers.NewMemoryStore()
@@ -66,12 +74,56 @@ func main() {
 	handler = middleware.CORSMiddleware(handler)
 	handler = middleware.LoggingMiddleware(handler)
 
-	// Start Server
+	// HTTP Server Configuration
 	serverAddr := fmt.Sprintf(":%s", port)
-	log.Printf("[INFO] Cozy Canvas Go API Server listening on http://localhost%s\n", serverAddr)
-	log.Println("[INFO] Press Ctrl+C to terminate.")
+	server := &http.Server{
+		Addr:         serverAddr,
+		Handler:      handler,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 
-	if err := http.ListenAndServe(serverAddr, handler); err != nil {
+	// Channel to catch server startup errors
+	serverErrors := make(chan error, 1)
+
+	// SERVER STARTUP: Run in a goroutine to avoid blocking main
+	go func() {
+		log.Printf("[INFO] Cozy Canvas Go API Server listening on http://localhost%s\n", serverAddr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrors <- err
+		}
+	}()
+
+	// Channel for system signals (process termination)
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+
+	// Blocking and waiting for events
+	select {
+	case err := <-serverErrors:
 		log.Fatalf("[FATAL] Server failed to start: %v", err)
+
+	case sig := <-shutdown:
+		log.Printf("[INFO] Shutdown signal received (%v). Starting Graceful Shutdown...\n", sig)
+
+		// Allocate 15 seconds to complete active client requests
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		// Graceful stop of HTTP server (stops accepting new, waits for existing)
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("[WARN] Server failed to shut down gracefully: %v. Forcing closure.", err)
+			_ = server.Close()
+		}
+
+		// Correctly close database connection if initialized
+		if db != nil {
+			log.Println("[DB] Closing PostgreSQL connections...")
+			if err := db.Close(); err != nil {
+				log.Printf("[ERROR] Database connection closure error: %v", err)
+			}
+		}
+
+		log.Println("[INFO] Cozy Canvas Backend stopped successfully.")
 	}
 }
