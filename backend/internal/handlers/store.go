@@ -40,8 +40,8 @@ func NewMemoryStore() *MemoryStore {
 		notes: make(map[string][]models.Note),
 		envNotes: []models.Note{
 			{ID: "env-USER", Text: "⚙️ USER\n\nguest_devops", X: 400, Y: 100, IsEnv: true},
-			{ID: "env-OS", Text: "⚙️ OS\n\nWindows 11", X: 600, Y: 300, IsEnv: true},
-			{ID: "env-ENV", Text: "⚙️ ENV\n\ncozy-staging", X: 200, Y: 300, IsEnv: true},
+			{ID: "env-OS", Text: "⚙️ OS\n\nNixOS", X: 600, Y: 300, IsEnv: true},
+			{ID: "env-ENV", Text: "⚙️ ENV\n\nproduction", X: 200, Y: 300, IsEnv: true},
 		},
 		connections: make(map[string][]models.Connection),
 	}
