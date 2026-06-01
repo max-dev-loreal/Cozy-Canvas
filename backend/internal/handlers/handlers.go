@@ -3,8 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"time"
 
+	"cozy-canvas/backend/internal/middleware"
 	"cozy-canvas/backend/internal/models"
+
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // APIHandler wraps our Store layer to expose HTTP handlers
@@ -31,9 +37,9 @@ func (a *APIHandler) readJSON(r *http.Request, dst interface{}) error {
 }
 
 func (a *APIHandler) getUsername(r *http.Request) string {
-	username := r.Header.Get("X-User-Header")
-	if username == "" {
-		return "guest_devops" // Default username for unauthenticated canvas sessions
+	username, ok := r.Context().Value(middleware.UserContextKey).(string)
+	if !ok || username == "" {
+		return "guest_devops" // Fallback if not authenticated (should not happen for protected routes)
 	}
 	return username
 }
@@ -91,12 +97,38 @@ func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := a.Store.GetUserByEmail(req.Email)
-	if err != nil || user.PasswordHash != req.Password {
+	if err != nil {
 		a.writeJSON(w, http.StatusUnauthorized, models.AuthResponse{Status: "error", Message: "Invalid email or password"})
 		return
 	}
 
-	a.writeJSON(w, http.StatusOK, models.AuthResponse{Status: "success", Username: user.Username})
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		a.writeJSON(w, http.StatusUnauthorized, models.AuthResponse{Status: "error", Message: "Invalid email or password"})
+		return
+	}
+
+	// Generate JWT Token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"username": user.Username,
+		"exp":      time.Now().Add(time.Hour * 24).Unix(), // Token valid for 24 hours
+	})
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "default-secret-change-me" // Fallback for dev
+	}
+
+	tokenString, err := token.SignedString([]byte(jwtSecret))
+	if err != nil {
+		a.writeJSON(w, http.StatusInternalServerError, models.AuthResponse{Status: "error", Message: "Could not generate token"})
+		return
+	}
+
+	a.writeJSON(w, http.StatusOK, models.AuthResponse{
+		Status:   "success",
+		Username: user.Username,
+		Token:    tokenString,
+	})
 }
 
 // ==========================================================================

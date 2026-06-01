@@ -52,4 +52,5 @@ type AuthResponse struct {
 	Status   string `json:"status"`
 	Username string `json:"username,omitempty"`
 	Message  string `json:"message,omitempty"`
+	Token    string `json:"token,omitempty"`
 }
