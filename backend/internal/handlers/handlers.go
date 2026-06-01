@@ -59,8 +59,8 @@ func (a *APIHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Simple mock hashing for codewords/password since we keep security simple or can use sha256
-	// In pure mock and simple setup, raw check or basic string storage is perfect. Let's do standard storage.
+	// Simple hashing for codewords/password since we keep security simple or can use sha256
+	// In a simple setup, raw check or basic string storage is acceptable. Let's do standard storage.
 	var word1, word2 string
 	if len(req.CodeWords) > 0 {
 		word1 = req.CodeWords[0]
