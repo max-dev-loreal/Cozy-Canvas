@@ -1,41 +1,39 @@
-# ADR 001: Выбор структуры монорепозитория для Cozy Canvas
+# ADR 001: Choosing Monorepo Structure for Cozy Canvas
 
-## Статус
-Принято (Approved)
+## Status
+Accepted (Approved)
 
-## Контекст
-Проект **Cozy Canvas** состоит из двух ключевых компонентов:
-1. **Интерактивный фронтенд** (`website/`) — легковесное SPA-приложение на HTML5, CSS3, D3.js и Vite, деплоящееся на Vercel.
-2. **REST API бэкенд** (`backend/`) — высокопроизводительное Go-приложение, спроектированное по методологии 12-Factor App, взаимодействующее с PostgreSQL и MinIO.
+## Context
+The **Cozy Canvas** project consists of two key components:
+1. **Interactive Frontend** (`website/`) — a lightweight SPA application built with HTML5, CSS3, D3.js, and Vite, deploying to Vercel.
+2. **REST API Backend** (`backend/`) — a high-performance Go application designed according to the 12-Factor App methodology, interacting with PostgreSQL and MinIO.
 
-Нам необходимо было выбрать стратегию хранения исходного кода:
-- **Мультирепозитории**: Раздельные репозитории для фронтенда и бэкенда.
-- **Монорепозиторий**: Хранение всех компонентов, включая скрипты инфраструктуры и миграции, в едином репозитории.
+We needed to choose a source code storage strategy:
+- **Multi-repo**: Separate repositories for frontend and backend.
+- **Monorepo**: Storing all components, including infrastructure scripts and migrations, in a single repository.
 
-## Решение
-Мы приняли решение организовать проект в виде **монорепозитория** со следующей структурой:
-- `website/` — фронтенд.
-- `backend/` — Go REST API бэкенд.
-- `infrastructure/` — Docker Compose манифесты и вспомогательные скрипты инициализации.
-- `migrations/` — SQL-миграции базы данных.
+## Decision
+We decided to organize the project as a **monorepo** with the following structure:
+- `website/` — frontend.
+- `backend/` — Go REST API backend.
+- `infrastructure/` — Docker Compose manifests and auxiliary initialization scripts.
+- `migrations/` — database SQL migrations.
 
-## Обоснование выбора
+## Justification
+1. **Atomic Changes**:
+   When adding new features (e.g., a new entity on the Canvas), changes are required in both the frontend (rendering and API calls) and the backend (data models, handlers, DB migrations). In a monorepo, the entire feature is delivered in a single commit and pull request, eliminating version desynchronization.
+2. **Simplified Local Environment**:
+   A single `Makefile` in the root of the monorepo allows a developer to spin up the entire infrastructure (DB, object storage), apply migrations, and start the front and back with one simple command.
+3. **Unified Versioning and Documentation**:
+   All architectural documentation (ADR) and deployment descriptions are stored in one place, simplifying the onboarding of new engineers.
+4. **CI/CD Optimization**:
+   Modern platforms (Vercel, Render, GitHub Actions) natively support monorepos, allowing builds to be triggered only when files in a specific subfolder change (e.g., deploying the front only when changes occur in the `website/` folder).
 
-1. **Атомарные изменения**:
-   При добавлении новых фич (например, новой сущности на Canvas) изменения требуются и во фронтенде (рендеринг и вызов API), и в бэкенде (модели данных, хендлеры, миграции БД). В монорепозитории вся фича доставляется одним коммитом и пул-реквестом, исключая рассинхронизацию версий.
-2. **Упрощение локального окружения**:
-   Единый `Makefile` в корне монорепозитория позволяет разработчику поднять всю инфраструктуру (БД, объектное хранилище), накатить миграции и запустить фронт и бэк одной простой командой.
-3. **Единая версионность и документация**:
-   Вся архитектурная документация (ADR) и описания развертывания хранятся в одном месте, упрощая онбординг новых инженеров.
-4. **Оптимизация CI/CD**:
-   Современные платформы (Vercel, Render, GitHub Actions) нативно поддерживают монорепозитории, позволяя запускать сборку только при изменении файлов в конкретной подпапке (например, деплоить фронт только при изменениях в папке `website/`).
-
-## Последствия
-
-- **Плюсы**:
-  - Упрощенный шеринг кода настроек и документации.
-  - Быстрая локальная разработка благодаря общим Docker и Makefile.
-  - Единая история изменений в Git.
-- **Минусы**:
-  - Размер репозитория увеличивается за счет объединения кода.
-  - Требуется аккуратный `.gitignore` для предотвращения коммита мусора из разных экосистем (Go-бинарники, `node_modules`, `.env`).
+## Consequences
+- **Pros**:
+  - Simplified sharing of settings and documentation code.
+  - Fast local development thanks to shared Docker and Makefile.
+  - Unified change history in Git.
+- **Cons**:
+  - Repository size increases due to merging code.
+  - Requires a careful `.gitignore` to prevent committing garbage from different ecosystems (Go binaries, `node_modules`, `.env`).
