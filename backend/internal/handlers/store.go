@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"cozy-canvas/backend/internal/models"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Store defines the storage engine interface for Cozy Canvas
@@ -18,7 +20,7 @@ type Store interface {
 	SaveEnvNotes(notes []models.Note) error
 	GetConnections(username string) ([]models.Connection, error)
 	SaveConnections(username string, conns []models.Connection) error
-	RegisterUser(username, email, passwordHash, word1, word2 string) error
+	RegisterUser(username, email, password, word1, word2 string) error
 	GetUserByEmail(email string) (models.User, error)
 }
 
@@ -94,7 +96,7 @@ func (m *MemoryStore) SaveConnections(username string, conns []models.Connection
 	return nil
 }
 
-func (m *MemoryStore) RegisterUser(username, email, passwordHash, word1, word2 string) error {
+func (m *MemoryStore) RegisterUser(username, email, password, word1, word2 string) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -107,11 +109,16 @@ func (m *MemoryStore) RegisterUser(username, email, passwordHash, word1, word2 s
 		}
 	}
 
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
 	newUser := models.User{
 		ID:           len(m.users) + 1,
 		Username:     username,
 		Email:        email,
-		PasswordHash: passwordHash,
+		PasswordHash: string(hashedPassword),
 		CodeWord1:    word1,
 		CodeWord2:    word2,
 		CreatedAt:    time.Now(),
@@ -283,9 +290,14 @@ func (d *DBStore) SaveConnections(username string, conns []models.Connection) er
 	return tx.Commit()
 }
 
-func (d *DBStore) RegisterUser(username, email, passwordHash, word1, word2 string) error {
-	_, err := d.db.Exec("INSERT INTO users (username, email, password_hash, code_word1, code_word2) VALUES ($1, $2, $3, $4, $5)",
-		username, email, passwordHash, word1, word2)
+func (d *DBStore) RegisterUser(username, email, password, word1, word2 string) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	_, err = d.db.Exec("INSERT INTO users (username, email, password_hash, code_word1, code_word2) VALUES ($1, $2, $3, $4, $5)",
+		username, email, string(hashedPassword), word1, word2)
 	return err
 }
 

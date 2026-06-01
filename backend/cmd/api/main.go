@@ -65,9 +65,11 @@ func main() {
 	// Register routes
 	mux.HandleFunc("/api/auth/register", apiHandler.Register)
 	mux.HandleFunc("/api/auth/login", apiHandler.Login)
-	mux.HandleFunc("/api/notes", apiHandler.HandleNotes)
-	mux.HandleFunc("/api/env-notes", apiHandler.HandleEnvNotes)
-	mux.HandleFunc("/api/connections", apiHandler.HandleConnections)
+	
+	// Protected routes
+	mux.Handle("/api/notes", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleNotes)))
+	mux.Handle("/api/env-notes", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleEnvNotes)))
+	mux.Handle("/api/connections", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleConnections)))
 
 	// Apply Middlewares (Logging + CORS)
 	var handler http.Handler = mux
