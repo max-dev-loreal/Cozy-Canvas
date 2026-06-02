@@ -15,6 +15,7 @@ import (
 type contextKey string
 
 const UserContextKey contextKey = "user"
+const UserIDContextKey contextKey = "user_id"
 
 // responseWriter captures the status code of the HTTP response
 type responseWriter struct {
@@ -78,7 +79,7 @@ func CORSMiddleware(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-User-Header, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		// Handle preflight options requests
 		if r.Method == http.MethodOptions {
@@ -127,9 +128,19 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		// Extract claims
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			username := claims["username"].(string)
-			// Add username to context
+			username, _ := claims["username"].(string)
+			var userID int
+			if uidVal, ok := claims["user_id"]; ok {
+				switch v := uidVal.(type) {
+				case float64:
+					userID = int(v)
+				case int:
+					userID = v
+				}
+			}
+			// Add username and user_id to context
 			ctx := context.WithValue(r.Context(), UserContextKey, username)
+			ctx = context.WithValue(ctx, UserIDContextKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
 			http.Error(w, "Invalid token claims", http.StatusUnauthorized)
