@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cozy-postgres-prod
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-cozy_canvas}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ../../migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${DB_USER:-postgres} -d $${DB_NAME:-cozy_canvas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2023-05-18T00-05-36Z
+    container_name: cozy-minio-prod
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cozyadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cozysecret}
+    volumes:
+      - minio_prod_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: cozy-backend-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-cozy_canvas}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-cozyadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-cozysecret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-cozy-assets}
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: cozy-nginx-prod
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - minio
+    restart: unless-stopped
+
+volumes:
+  postgres_prod_data:
+  minio_prod_data:
