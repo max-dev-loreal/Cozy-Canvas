@@ -46,7 +46,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// CORSMiddleware adds necessary headers for cross-origin requests and validates the Origin header
+// CORSMiddleware adds necessary headers for cross-origin requests and validates the Origin header against the CORS_ALLOWED_ORIGINS environment variable.
 func CORSMiddleware(next http.Handler) http.Handler {
 	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
 	origins := strings.Split(allowedOrigins, ",")
