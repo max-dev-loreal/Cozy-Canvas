@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"cozy-canvas/backend/internal/middleware"
 	"cozy-canvas/backend/internal/models"
+	"cozy-canvas/backend/internal/storage"
 	"cozy-canvas/backend/internal/store"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -20,13 +22,15 @@ type APIHandler struct {
 	Users       store.UserRepository
 	Notes       store.NoteRepository
 	Connections store.ConnectionRepository
+	Storage     *storage.MinIOClient
 }
 
-func NewAPIHandler(u store.UserRepository, n store.NoteRepository, c store.ConnectionRepository) *APIHandler {
+func NewAPIHandler(u store.UserRepository, n store.NoteRepository, c store.ConnectionRepository, s *storage.MinIOClient) *APIHandler {
 	return &APIHandler{
 		Users:       u,
 		Notes:       n,
 		Connections: c,
+		Storage:     s,
 	}
 }
 
@@ -393,5 +397,74 @@ func (a *APIHandler) RBACMiddleware(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// ==========================================================================
+// File Upload & Download presigned URL Handlers
+// ==========================================================================
+
+func (a *APIHandler) HandleUploadURL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	var req struct {
+		Filename string `json:"filename"`
+	}
+	if err := a.readJSON(r, &req); err != nil || req.Filename == "" {
+		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Filename is required"})
+		return
+	}
+
+	// Generate a unique object name in bucket: format "unixnano-filename" to prevent duplicates
+	objectName := fmt.Sprintf("%d-%s", time.Now().UnixNano(), req.Filename)
+
+	if a.Storage == nil {
+		a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Storage service not initialized"})
+		return
+	}
+
+	// Generate put url valid for 15 minutes
+	uploadURL, err := a.Storage.GeneratePresignedPutURL(r.Context(), objectName, 15*time.Minute)
+	if err != nil {
+		a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	a.writeJSON(w, http.StatusOK, map[string]string{
+		"uploadUrl": uploadURL,
+		"filename":  objectName,
+	})
+}
+
+func (a *APIHandler) HandleDownloadURL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// Parse object ID (filename) from prefix path /api/files/download-url/{id}
+	objectName := strings.TrimPrefix(r.URL.Path, "/api/files/download-url/")
+	if objectName == "" || objectName == r.URL.Path {
+		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File ID is required"})
+		return
+	}
+
+	if a.Storage == nil {
+		a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Storage service not initialized"})
+		return
+	}
+
+	// Generate get url valid for 1 hour
+	downloadURL, err := a.Storage.GeneratePresignedGetURL(r.Context(), objectName, time.Hour)
+	if err != nil {
+		a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	a.writeJSON(w, http.StatusOK, map[string]string{
+		"downloadUrl": downloadURL,
 	})
 }

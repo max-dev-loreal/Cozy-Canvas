@@ -17,11 +17,9 @@ BUCKET_NAME=${MINIO_BUCKET_NAME:-cozy-canvas-assets}
 
 # Create bucket if it doesn't already exist
 if ! mc ls cozyminio/${BUCKET_NAME} > /dev/null 2>&1; then
-  echo "[MinIO] Creating public assets bucket: '${BUCKET_NAME}'..."
+  echo "[MinIO] Creating private assets bucket: '${BUCKET_NAME}'..."
   mc mb cozyminio/${BUCKET_NAME}
-  # Set anonymous read permissions (ideal for sharing image uploads in notes)
-  mc anonymous set download cozyminio/${BUCKET_NAME}
-  echo "[MinIO] Bucket '${BUCKET_NAME}' successfully initialized and made public."
+  echo "[MinIO] Bucket '${BUCKET_NAME}' successfully initialized and kept private."
 else
   echo "[MinIO] Bucket '${BUCKET_NAME}' already exists, skipping creation."
 fi
