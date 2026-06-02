@@ -14,6 +14,7 @@ import (
 
 	"cozy-canvas/backend/internal/handlers"
 	"cozy-canvas/backend/internal/middleware"
+	"cozy-canvas/backend/internal/storage"
 	"cozy-canvas/backend/internal/store"
 
 	// Standard PostgreSQL driver for Go
@@ -58,8 +59,27 @@ func main() {
 		log.Fatal("DATABASE_URL env variable not provided.")
 	}
 
-	// Initialize API handlers with specific repositories
-	apiHandler := handlers.NewAPIHandler(userRepo, noteRepo, connRepo)
+	// Read MinIO environment variables
+	minioEndpoint := os.Getenv("MINIO_ENDPOINT")
+	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
+	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
+	minioBucket := os.Getenv("MINIO_BUCKET")
+
+	var minioClient *storage.MinIOClient
+	if minioEndpoint != "" && minioAccessKey != "" && minioSecretKey != "" && minioBucket != "" {
+		log.Printf("[MinIO] Connecting to MinIO endpoint %s (bucket: %s)...\n", minioEndpoint, minioBucket)
+		minioClient, err = storage.NewMinIOClient(minioEndpoint, minioAccessKey, minioSecretKey, minioBucket)
+		if err != nil {
+			log.Printf("[ERROR] MinIO initialization failed: %v\n", err)
+		} else {
+			log.Println("[MinIO] MinIO storage client successfully initialized.")
+		}
+	} else {
+		log.Println("[WARN] MinIO environment variables not fully set. Storage features will be unavailable.")
+	}
+
+	// Initialize API handlers with specific repositories and storage client
+	apiHandler := handlers.NewAPIHandler(userRepo, noteRepo, connRepo, minioClient)
 
 	// Create custom ServeMux for standard routing
 	mux := http.NewServeMux()
@@ -74,6 +94,10 @@ func main() {
 	mux.Handle("/api/notes", middleware.AuthMiddleware(apiHandler.RBACMiddleware(http.HandlerFunc(apiHandler.HandleNotes))))
 	mux.Handle("/api/env-notes", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleEnvNotes)))
 	mux.Handle("/api/connections", middleware.AuthMiddleware(apiHandler.RBACMiddleware(http.HandlerFunc(apiHandler.HandleConnections))))
+	
+	// File URL routes (protected by AuthMiddleware)
+	mux.Handle("/api/files/upload-url", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleUploadURL)))
+	mux.Handle("/api/files/download-url/", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleDownloadURL)))
 
 	// Apply Middlewares (Logging + CORS)
 	var handler http.Handler = mux
