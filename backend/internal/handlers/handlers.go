@@ -52,6 +52,10 @@ func (a *APIHandler) getUsername(r *http.Request) string {
 }
 
 func (a *APIHandler) getUserID(r *http.Request) (int, error) {
+	userID, ok := r.Context().Value(middleware.UserIDContextKey).(int)
+	if ok && userID != 0 {
+		return userID, nil
+	}
 	username := a.getUsername(r)
 	return a.Users.GetUserIDByUsername(username)
 }
@@ -120,6 +124,7 @@ func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Generate JWT Token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id":  user.ID,
 		"username": user.Username,
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	})
