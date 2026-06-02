@@ -8,6 +8,11 @@ ifneq ("$(wildcard $(ENV_FILE))","")
     export
 endif
 
+# Default fallback values for database user and name if not set in environment or .env
+DB_USER ?= postgres
+DB_NAME ?= cozy_canvas
+
+
 .PHONY: dev stop backend website migrate status clean help
 
 # Default help menu
