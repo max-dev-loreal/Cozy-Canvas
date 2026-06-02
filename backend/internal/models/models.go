@@ -54,3 +54,20 @@ type AuthResponse struct {
 	Message  string `json:"message,omitempty"`
 	Token    string `json:"token,omitempty"`
 }
+
+// AccessGrant represents a temporary authorization to access another user's notes
+type AccessGrant struct {
+	ID               int       `json:"id" db:"id"`
+	OwnerUserID      int       `json:"owner_user_id" db:"owner_user_id"`
+	ViewerUserID     int       `json:"viewer_user_id" db:"viewer_user_id"`
+	CodeWordVerified bool      `json:"code_word_verified" db:"code_word_verified"`
+	ExpiresAt        time.Time `json:"expires_at" db:"expires_at"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+}
+
+// GrantAccessRequest represents the request body for granting read-only access
+type GrantAccessRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Codeword string `json:"codeword"`
+}

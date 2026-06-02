@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -158,9 +159,17 @@ func (a *APIHandler) HandleNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetUserID := userID
+	if targetParam := r.URL.Query().Get("user_id"); targetParam != "" {
+		var parsed int
+		if _, err := fmt.Sscanf(targetParam, "%d", &parsed); err == nil {
+			targetUserID = parsed
+		}
+	}
+
 	switch r.Method {
 	case http.MethodGet:
-		notes, err := a.Notes.GetNotes(userID)
+		notes, err := a.Notes.GetNotes(targetUserID)
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -168,6 +177,10 @@ func (a *APIHandler) HandleNotes(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusOK, notes)
 
 	case http.MethodPost:
+		if targetUserID != userID {
+			a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Write access denied"})
+			return
+		}
 		var notesList []models.Note
 		if err := a.readJSON(r, &notesList); err != nil {
 			a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON notes payload"})
@@ -230,9 +243,17 @@ func (a *APIHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetUserID := userID
+	if targetParam := r.URL.Query().Get("user_id"); targetParam != "" {
+		var parsed int
+		if _, err := fmt.Sscanf(targetParam, "%d", &parsed); err == nil {
+			targetUserID = parsed
+		}
+	}
+
 	switch r.Method {
 	case http.MethodGet:
-		conns, err := a.Connections.GetConnections(userID)
+		conns, err := a.Connections.GetConnections(targetUserID)
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -240,6 +261,10 @@ func (a *APIHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusOK, conns)
 
 	case http.MethodPost:
+		if targetUserID != userID {
+			a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Write access denied"})
+			return
+		}
 		var connsList []models.Connection
 		if err := a.readJSON(r, &connsList); err != nil {
 			a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON connections payload"})
@@ -256,4 +281,107 @@ func (a *APIHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	default:
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
 	}
+}
+
+// ==========================================================================
+// RBAC & Access Grant Handlers
+// ==========================================================================
+
+func (a *APIHandler) GrantAccess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.writeJSON(w, http.StatusMethodNotAllowed, models.AuthResponse{Status: "error", Message: "Method not allowed"})
+		return
+	}
+
+	viewerUserID, err := a.getUserID(r)
+	if err != nil {
+		a.writeJSON(w, http.StatusUnauthorized, models.AuthResponse{Status: "error", Message: "Unauthorized viewer"})
+		return
+	}
+
+	var req models.GrantAccessRequest
+	if err := a.readJSON(r, &req); err != nil {
+		a.writeJSON(w, http.StatusBadRequest, models.AuthResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+
+	owner, err := a.Users.GetUserByEmail(req.Email)
+	if err != nil {
+		a.writeJSON(w, http.StatusUnauthorized, models.AuthResponse{Status: "error", Message: "Invalid owner credentials or codeword"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(owner.PasswordHash), []byte(req.Password)); err != nil {
+		a.writeJSON(w, http.StatusUnauthorized, models.AuthResponse{Status: "error", Message: "Invalid owner credentials or codeword"})
+		return
+	}
+
+	if req.Codeword == "" || (req.Codeword != owner.CodeWord1 && req.Codeword != owner.CodeWord2) {
+		a.writeJSON(w, http.StatusUnauthorized, models.AuthResponse{Status: "error", Message: "Invalid owner credentials or codeword"})
+		return
+	}
+
+	if owner.ID == viewerUserID {
+		a.writeJSON(w, http.StatusBadRequest, models.AuthResponse{Status: "error", Message: "Cannot grant access to yourself"})
+		return
+	}
+
+	expiresAt := time.Now().Add(time.Hour)
+	if err := a.Users.CreateAccessGrant(owner.ID, viewerUserID, expiresAt); err != nil {
+		a.writeJSON(w, http.StatusInternalServerError, models.AuthResponse{Status: "error", Message: "Failed to create access grant"})
+		return
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"owner_user_id":  owner.ID,
+		"viewer_user_id": viewerUserID,
+		"exp":            expiresAt.Unix(),
+	})
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "default-secret-change-me"
+	}
+
+	tokenString, err := token.SignedString([]byte(jwtSecret))
+	if err != nil {
+		a.writeJSON(w, http.StatusInternalServerError, models.AuthResponse{Status: "error", Message: "Failed to sign grant token"})
+		return
+	}
+
+	a.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":     "success",
+		"message":    "Access grant created successfully",
+		"token":      tokenString,
+		"expires_at": expiresAt.Format(time.RFC3339),
+	})
+}
+
+func (a *APIHandler) RBACMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, err := a.getUserID(r)
+		if err != nil {
+			a.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+			return
+		}
+
+		targetParam := r.URL.Query().Get("user_id")
+		if targetParam != "" {
+			var targetUserID int
+			if _, err := fmt.Sscanf(targetParam, "%d", &targetUserID); err == nil && targetUserID != userID {
+				if r.Method != http.MethodGet {
+					a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Forbidden: Write access denied"})
+					return
+				}
+
+				allowed, err := a.Users.VerifyAccessGrant(targetUserID, userID)
+				if err != nil || !allowed {
+					a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "Forbidden: No valid access grant"})
+					return
+				}
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

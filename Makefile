@@ -52,6 +52,8 @@ migrate:
 	docker compose -f infrastructure/docker/docker-compose.yml exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -f /migrations/001_create_users.sql
 	@echo "🌸 Applying canvas nodes and connections migration..."
 	docker compose -f infrastructure/docker/docker-compose.yml exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -f /migrations/002_create_nodes.sql
+	@echo "🌸 Applying access grants migration..."
+	docker compose -f infrastructure/docker/docker-compose.yml exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -f /migrations/003_access_grants.sql
 	@echo "🌸 All database migrations applied successfully!"
 
 # Display the status of running Docker containers
