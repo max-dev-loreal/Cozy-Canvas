@@ -67,6 +67,7 @@ func main() {
 	// Register routes
 	mux.HandleFunc("/api/auth/register", apiHandler.Register)
 	mux.HandleFunc("/api/auth/login", apiHandler.Login)
+	mux.HandleFunc("/api/health", apiHandler.Health)
 	
 	// Protected routes
 	mux.Handle("/api/auth/grant-access", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.GrantAccess)))

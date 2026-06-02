@@ -148,6 +148,15 @@ func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Health is the readiness probe endpoint
+func (a *APIHandler) Health(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]string{"status": "OK", "time": time.Now().Format(time.RFC3339)})
+}
+
 // ==========================================================================
 // Notes Handlers
 // ==========================================================================
@@ -350,10 +359,11 @@ func (a *APIHandler) GrantAccess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":     "success",
-		"message":    "Access grant created successfully",
-		"token":      tokenString,
-		"expires_at": expiresAt.Format(time.RFC3339),
+		"status":        "success",
+		"message":       "Access grant created successfully",
+		"token":         tokenString,
+		"expires_at":    expiresAt.Format(time.RFC3339),
+		"owner_user_id": owner.ID,
 	})
 }
 
