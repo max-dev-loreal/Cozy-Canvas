@@ -11,6 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../../migrations:/migrations:ro
+    # Healthcheck to verify postgres is ready before dependent services start
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${DB_USER:-postgres} -d $${DB_NAME:-cozy_canvas}"]
       interval: 10s
