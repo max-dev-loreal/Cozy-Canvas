@@ -94,6 +94,7 @@ func (a *APIHandler) Register(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, models.AuthResponse{Status: "success", Username: req.Username})
 }
 
+// Login authenticates a user by comparing the bcrypt hash of the stored password with the password provided in the request.
 func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		a.writeJSON(w, http.StatusMethodNotAllowed, models.AuthResponse{Status: "error", Message: "Method not allowed"})
