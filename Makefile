@@ -13,7 +13,7 @@ DB_USER ?= postgres
 DB_NAME ?= cozy_canvas
 
 
-.PHONY: dev stop backend website migrate status clean help
+.PHONY: dev stop backend website migrate status clean help test
 
 # Default help menu
 help:
@@ -23,6 +23,7 @@ help:
 	@echo "  make backend      - Run the Go REST API locally"
 	@echo "  make website      - Run the Vite frontend development server"
 	@echo "  make migrate      - Apply SQL migrations to PostgreSQL"
+	@echo "  make test         - Run integration API tests"
 	@echo "  make status       - Display running Docker services"
 
 # Start PostgreSQL and MinIO services using Docker Compose
@@ -59,3 +60,8 @@ migrate:
 # Display the status of running Docker containers
 status:
 	docker compose -f infrastructure/docker/docker-compose.yml ps
+
+# Run API integration tests
+test:
+	@echo "🌸 Running integration API tests..."
+	bash tests/api/test_all.sh
