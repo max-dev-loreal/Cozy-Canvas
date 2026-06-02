@@ -16,7 +16,7 @@ type User struct {
 // Note represents an interactive node on the canvas
 type Note struct {
 	ID        string    `json:"id" db:"id"`
-	UserID    string    `json:"user_id,omitempty" db:"user_id"`
+	UserID    *int      `json:"user_id,omitempty" db:"user_id"` // Pointer because it can be NULL for global envs
 	Text      string    `json:"text" db:"text"`
 	X         float64   `json:"x" db:"x"`
 	Y         float64   `json:"y" db:"y"`
@@ -27,7 +27,7 @@ type Note struct {
 // Connection represents a physics link between two notes
 type Connection struct {
 	ID        string    `json:"id" db:"id"` // Format: source-target
-	UserID    string    `json:"user_id,omitempty" db:"user_id"`
+	UserID    int       `json:"user_id,omitempty" db:"user_id"`
 	Source    string    `json:"source" db:"source_note_id"`
 	Target    string    `json:"target" db:"target_note_id"`
 	CreatedAt time.Time `json:"created_at,omitempty" db:"created_at"`
