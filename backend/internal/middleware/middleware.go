@@ -45,10 +45,38 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// CORSMiddleware adds necessary headers for cross-origin requests
+// CORSMiddleware adds necessary headers for cross-origin requests and validates the Origin header
 func CORSMiddleware(next http.Handler) http.Handler {
+	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	origins := strings.Split(allowedOrigins, ",")
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+
+		if origin != "" {
+			isAllowed := false
+			for _, o := range origins {
+				if o == "*" || o == origin {
+					isAllowed = true
+					break
+				}
+			}
+
+			if !isAllowed {
+				log.Printf("[CORS] Blocked request from unauthorized origin: %s", origin)
+				http.Error(w, "Forbidden: CORS origin not allowed", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		} else {
+			// For non-CORS requests (like server-to-server or direct browser navigation), 
+			// we can either allow or strictly require an origin. 
+			// Usually, we allow them to pass through but don't set CORS headers.
+		}
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-User-Header, Authorization")
 
