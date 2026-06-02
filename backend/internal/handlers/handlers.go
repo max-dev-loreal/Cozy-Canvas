@@ -8,18 +8,25 @@ import (
 
 	"cozy-canvas/backend/internal/middleware"
 	"cozy-canvas/backend/internal/models"
+	"cozy-canvas/backend/internal/store"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// APIHandler wraps our Store layer to expose HTTP handlers
+// APIHandler wraps our repository layer to expose HTTP handlers
 type APIHandler struct {
-	Store Store
+	Users       store.UserRepository
+	Notes       store.NoteRepository
+	Connections store.ConnectionRepository
 }
 
-func NewAPIHandler(store Store) *APIHandler {
-	return &APIHandler{Store: store}
+func NewAPIHandler(u store.UserRepository, n store.NoteRepository, c store.ConnectionRepository) *APIHandler {
+	return &APIHandler{
+		Users:       u,
+		Notes:       n,
+		Connections: c,
+	}
 }
 
 // ==========================================================================
@@ -39,9 +46,14 @@ func (a *APIHandler) readJSON(r *http.Request, dst interface{}) error {
 func (a *APIHandler) getUsername(r *http.Request) string {
 	username, ok := r.Context().Value(middleware.UserContextKey).(string)
 	if !ok || username == "" {
-		return "guest_devops" // Fallback if not authenticated (should not happen for protected routes)
+		return "guest_devops"
 	}
 	return username
+}
+
+func (a *APIHandler) getUserID(r *http.Request) (int, error) {
+	username := a.getUsername(r)
+	return a.Users.GetUserIDByUsername(username)
 }
 
 // ==========================================================================
@@ -65,8 +77,6 @@ func (a *APIHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Simple hashing for codewords/password since we keep security simple or can use sha256
-	// In a simple setup, raw check or basic string storage is acceptable. Let's do standard storage.
 	var word1, word2 string
 	if len(req.CodeWords) > 0 {
 		word1 = req.CodeWords[0]
@@ -75,7 +85,7 @@ func (a *APIHandler) Register(w http.ResponseWriter, r *http.Request) {
 		word2 = req.CodeWords[1]
 	}
 
-	err := a.Store.RegisterUser(req.Username, req.Email, req.Password, word1, word2)
+	err := a.Users.RegisterUser(req.Username, req.Email, req.Password, word1, word2)
 	if err != nil {
 		a.writeJSON(w, http.StatusConflict, models.AuthResponse{Status: "error", Message: err.Error()})
 		return
@@ -96,7 +106,7 @@ func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := a.Store.GetUserByEmail(req.Email)
+	user, err := a.Users.GetUserByEmail(req.Email)
 	if err != nil {
 		a.writeJSON(w, http.StatusUnauthorized, models.AuthResponse{Status: "error", Message: "Invalid email or password"})
 		return
@@ -110,12 +120,12 @@ func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Generate JWT Token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"username": user.Username,
-		"exp":      time.Now().Add(time.Hour * 24).Unix(), // Token valid for 24 hours
+		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	})
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "default-secret-change-me" // Fallback for dev
+		jwtSecret = "default-secret-change-me"
 	}
 
 	tokenString, err := token.SignedString([]byte(jwtSecret))
@@ -136,11 +146,15 @@ func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 // ==========================================================================
 
 func (a *APIHandler) HandleNotes(w http.ResponseWriter, r *http.Request) {
-	username := a.getUsername(r)
+	userID, err := a.getUserID(r)
+	if err != nil {
+		a.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "User not found"})
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet:
-		notes, err := a.Store.GetNotes(username)
+		notes, err := a.Notes.GetNotes(userID)
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -154,7 +168,7 @@ func (a *APIHandler) HandleNotes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		err := a.Store.SaveNotes(username, notesList)
+		err := a.Notes.SaveNotes(userID, notesList)
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -173,7 +187,7 @@ func (a *APIHandler) HandleNotes(w http.ResponseWriter, r *http.Request) {
 func (a *APIHandler) HandleEnvNotes(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		envList, err := a.Store.GetEnvNotes()
+		envList, err := a.Notes.GetEnvNotes()
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -187,7 +201,7 @@ func (a *APIHandler) HandleEnvNotes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err := a.Store.SaveEnvNotes(envList)
+		err := a.Notes.SaveEnvNotes(envList)
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -204,11 +218,15 @@ func (a *APIHandler) HandleEnvNotes(w http.ResponseWriter, r *http.Request) {
 // ==========================================================================
 
 func (a *APIHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
-	username := a.getUsername(r)
+	userID, err := a.getUserID(r)
+	if err != nil {
+		a.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "User not found"})
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet:
-		conns, err := a.Store.GetConnections(username)
+		conns, err := a.Connections.GetConnections(userID)
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -222,7 +240,7 @@ func (a *APIHandler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err := a.Store.SaveConnections(username, connsList)
+		err := a.Connections.SaveConnections(userID, connsList)
 		if err != nil {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
