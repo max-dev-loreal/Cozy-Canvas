@@ -14,6 +14,7 @@ import (
 
 	"cozy-canvas/backend/internal/handlers"
 	"cozy-canvas/backend/internal/middleware"
+	"cozy-canvas/backend/internal/store"
 
 	// Standard PostgreSQL driver for Go
 	_ "github.com/lib/pq"
@@ -29,35 +30,36 @@ func main() {
 	}
 
 	dbURL := os.Getenv("DATABASE_URL")
-	var store handlers.Store
+	var userRepo store.UserRepository
+	var noteRepo store.NoteRepository
+	var connRepo store.ConnectionRepository
 	var db *sql.DB
 	var err error
 
-	// FIXED: Removed nil check that caused compilation error
 	if dbURL != "" {
 		log.Printf("[DB] Connecting to PostgreSQL at %s...\n", dbURL)
 		db, err = sql.Open("postgres", dbURL)
-		if err != nil {
-			log.Printf("[ERROR] Database connection failed: %v. Falling back to MemoryStore.\n", err)
-			store = handlers.NewMemoryStore()
-		} else {
-			// Verify db connection
+		if err == nil {
 			err = db.Ping()
-			if err != nil {
-				log.Printf("[ERROR] Database ping failed: %v. Falling back to MemoryStore.\n", err)
-				store = handlers.NewMemoryStore()
-			} else {
-				log.Println("[DB] Successfully connected to PostgreSQL! Active production mode.")
-				store = handlers.NewDBStore(db)
-			}
+		}
+
+		if err != nil {
+			log.Printf("[ERROR] Database connection failed: %v. Falling back to MemoryStore (Not implemented for Repository Pattern yet).\n", err)
+			// For simplicity in this refactor, we assume DB is available. 
+			// In a real app, we'd have Memory implementations for each repo.
+			log.Fatal("Database is required for current implementation")
+		} else {
+			log.Println("[DB] Successfully connected to PostgreSQL! Active production mode.")
+			userRepo = store.NewPGUserRepository(db)
+			noteRepo = store.NewPGNoteRepository(db)
+			connRepo = store.NewPGConnectionRepository(db)
 		}
 	} else {
-		log.Println("[INFO] DATABASE_URL env variable not provided. Starting in MemoryStore (Fallback Mode).")
-		store = handlers.NewMemoryStore()
+		log.Fatal("DATABASE_URL env variable not provided.")
 	}
 
-	// Initialize API handlers
-	apiHandler := handlers.NewAPIHandler(store)
+	// Initialize API handlers with specific repositories
+	apiHandler := handlers.NewAPIHandler(userRepo, noteRepo, connRepo)
 
 	// Create custom ServeMux for standard routing
 	mux := http.NewServeMux()
