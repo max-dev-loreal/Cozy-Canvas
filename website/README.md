@@ -18,7 +18,7 @@ This directory contains the frontend part of the **Cozy Canvas** monorepo, which
 
 ## Deploy to Vercel 🚀
 
-The interactive canvas is designed to be easily hosted as a fully static site with dynamic requests to the Go API (database server), or completely autonomously with data stored in LocalStorage.
+The interactive canvas is designed to be easily hosted as a fully static site with dynamic requests to the Go API (database server).
 
 ### Step 1: Prepare for Import to Vercel
 
