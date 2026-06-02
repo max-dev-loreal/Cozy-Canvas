@@ -15,6 +15,7 @@ echo "============================================="
 ./02_login.sh
 ./03_create_note.sh
 ./04_grant_access.sh
+./05_file_and_connection.sh
 
 # Clean up token files
 rm -f token_a.txt token_b.txt
