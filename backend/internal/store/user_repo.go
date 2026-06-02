@@ -14,6 +14,7 @@ func NewPGUserRepository(db *sql.DB) UserRepository {
 	return &pgUserRepository{db: db}
 }
 
+// RegisterUser hashes the user's password using bcrypt before inserting it into the database to ensure plaintext passwords are never stored.
 func (r *pgUserRepository) RegisterUser(username, email, password, word1, word2 string) error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
