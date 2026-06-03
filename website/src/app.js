@@ -386,6 +386,99 @@ function renderNotes() {
     });
     noteEl.appendChild(deleteBtn);
 
+    // Upload/Attach File Button (only for standard notes)
+    if (!note.isEnv) {
+      const uploadBtn = document.createElement('button');
+      uploadBtn.className = 'btn-upload-file';
+      uploadBtn.innerHTML = '📎';
+      uploadBtn.title = 'Attach File';
+      
+      // Inline styles for upload button next to delete button or at bottom
+      uploadBtn.style.position = 'absolute';
+      uploadBtn.style.bottom = '5px';
+      uploadBtn.style.right = '5px';
+      uploadBtn.style.background = 'rgba(255, 255, 255, 0.15)';
+      uploadBtn.style.border = 'none';
+      uploadBtn.style.borderRadius = '50%';
+      uploadBtn.style.width = '24px';
+      uploadBtn.style.height = '24px';
+      uploadBtn.style.display = 'flex';
+      uploadBtn.style.alignItems = 'center';
+      uploadBtn.style.justifyContent = 'center';
+      uploadBtn.style.cursor = 'pointer';
+      uploadBtn.style.fontSize = '12px';
+      uploadBtn.style.transition = 'all 0.2s ease';
+      
+      uploadBtn.addEventListener('mouseenter', () => {
+        uploadBtn.style.background = 'rgba(255, 255, 255, 0.3)';
+        uploadBtn.style.transform = 'scale(1.1)';
+      });
+      uploadBtn.addEventListener('mouseleave', () => {
+        uploadBtn.style.background = 'rgba(255, 255, 255, 0.15)';
+        uploadBtn.style.transform = 'scale(1)';
+      });
+
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.style.display = 'none';
+
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        showToast(`🌸 Uploading ${file.name}...`);
+        try {
+          const res = await apiFetch('/api/files/upload-url', 'POST', { filename: file.name });
+          if (!res || !res.uploadUrl || !res.filename) {
+            throw new Error('Failed to get upload URL');
+          }
+
+          const uploadRes = await fetch(res.uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: {
+              'Content-Type': file.type || 'application/octet-stream',
+            }
+          });
+
+          if (!uploadRes.ok) {
+            throw new Error(`Upload failed: ${uploadRes.status}`);
+          }
+
+          const downloadRes = await apiFetch(`/api/files/download-url/${res.filename}`, 'GET');
+          if (!downloadRes || !downloadRes.downloadUrl) {
+            throw new Error('Failed to get download URL');
+          }
+
+          const isImage = file.type.startsWith('image/');
+          let attachmentText = '';
+          if (isImage) {
+            attachmentText = `\n\n🖼️ [Attached Image](${downloadRes.downloadUrl})`;
+          } else {
+            attachmentText = `\n\n📎 [Attached File: ${file.name}](${downloadRes.downloadUrl})`;
+          }
+
+          note.text += attachmentText;
+          textEl.textContent = note.text;
+          
+          await dbService.saveNotes(notes);
+          showToast('🌸 File attached successfully!');
+          renderNotes();
+        } catch (err) {
+          console.error(err);
+          showToast('❌ Failed to upload file.');
+        }
+      });
+
+      uploadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.click();
+      });
+
+      noteEl.appendChild(uploadBtn);
+      noteEl.appendChild(fileInput);
+    }
+
     // Mouse Interaction
     noteEl.addEventListener('mousedown', (e) => {
       if (e.target.contentEditable === 'true') return;
