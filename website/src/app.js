@@ -155,9 +155,8 @@ const dbService = {
     try {
       return await apiFetch('/api/notes');
     } catch (e) {
-      console.warn('API unavailable. Falling back to offline mode. Data is not synchronized.');
-      const data = localStorage.getItem('cozy-canvas-notes-data');
-      return data ? JSON.parse(data) : [];
+      console.warn('API unavailable. Data is not synchronized.');
+      return [];
     }
   },
 
@@ -165,8 +164,7 @@ const dbService = {
     try {
       await apiFetch('/api/notes', 'POST', notesList);
     } catch (e) {
-      console.warn('API unavailable. Temporarily storing notes in local storage.');
-      localStorage.setItem('cozy-canvas-notes-data', JSON.stringify(notesList));
+      console.warn('API unavailable. Failed to save notes.');
     }
   },
 
@@ -175,16 +173,11 @@ const dbService = {
       return await apiFetch('/api/env-notes');
     } catch (e) {
       console.warn('API unavailable. Loading default system configuration.');
-      const data = localStorage.getItem('cozy-canvas-env-notes-data');
-      if (data) return JSON.parse(data);
-
-      const defaultEnv = [
+      return [
         { id: 'env-USER', text: '⚙️ USER\n\nguest_devops', x: window.innerWidth / 2 - 85, y: window.innerHeight / 2 - 280, isEnv: true },
         { id: 'env-OS', text: '⚙️ OS\n\nLinux (NixOS)', x: window.innerWidth / 2 - 85 + 200, y: window.innerHeight / 2 - 85, isEnv: true },
         { id: 'env-WM', text: '⚙️ COMPOSITOR\n\nHyprland', x: window.innerWidth / 2 - 85 - 200, y: window.innerHeight / 2 - 85, isEnv: true }
       ];
-      localStorage.setItem('cozy-canvas-env-notes-data', JSON.stringify(defaultEnv));
-      return defaultEnv;
     }
   },
 
@@ -192,8 +185,7 @@ const dbService = {
     try {
       await apiFetch('/api/env-notes', 'POST', envNotesList);
     } catch (e) {
-      console.warn('API unavailable. Saving environment notes locally.');
-      localStorage.setItem('cozy-canvas-env-notes-data', JSON.stringify(envNotesList));
+      console.warn('API unavailable. Failed to save environment notes.');
     }
   },
 
@@ -201,17 +193,16 @@ const dbService = {
     try {
       return await apiFetch('/api/connections');
     } catch (e) {
-      const data = localStorage.getItem('cozy-canvas-connections-data');
-      return data ? JSON.parse(data) : [];
+      console.warn('API unavailable. Failed to retrieve connections.');
+      return [];
     }
   },
 
   async saveConnections(connectionsList) {
     try {
-      localStorage.setItem('cozy-canvas-connections-data', JSON.stringify(connectionsList));
       await apiFetch('/api/connections', 'POST', connectionsList);
     } catch (e) {
-      console.warn('API unavailable. Saved connections locally.');
+      console.warn('API unavailable. Failed to save connections.');
     }
   }
 };
