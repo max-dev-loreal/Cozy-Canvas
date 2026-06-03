@@ -35,6 +35,7 @@ func (r *pgNoteRepository) GetNotes(userID int) ([]models.Note, error) {
 }
 
 func (r *pgNoteRepository) SaveNotes(userID int, notes []models.Note) error {
+	// Start SQL transaction to ensure atomic deletion and bulk insertion of notes
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -79,6 +80,7 @@ func (r *pgNoteRepository) GetEnvNotes() ([]models.Note, error) {
 }
 
 func (r *pgNoteRepository) SaveEnvNotes(notes []models.Note) error {
+	// Start SQL transaction to ensure atomic deletion and bulk insertion of env notes
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err

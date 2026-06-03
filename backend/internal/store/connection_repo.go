@@ -36,6 +36,7 @@ func (r *pgConnectionRepository) GetConnections(userID int) ([]models.Connection
 }
 
 func (r *pgConnectionRepository) SaveConnections(userID int, conns []models.Connection) error {
+	// Start SQL transaction to ensure atomic deletion and bulk insertion of connections
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
