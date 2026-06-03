@@ -17,6 +17,8 @@ import (
 	"cozy-canvas/backend/internal/storage"
 	"cozy-canvas/backend/internal/store"
 
+	"github.com/go-chi/chi/v5"
+
 	// Standard PostgreSQL driver for Go
 	_ "github.com/lib/pq"
 )
@@ -28,6 +30,12 @@ func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
+	}
+
+	// Strict security check: JWT_SECRET must be configured
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("[FATAL] JWT_SECRET environment variable is not set. Refusing to start for security reasons.")
 	}
 
 	dbURL := os.Getenv("DATABASE_URL")
@@ -64,11 +72,15 @@ func main() {
 	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
 	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
 	minioBucket := os.Getenv("MINIO_BUCKET")
+	minioSecure := false
+	if os.Getenv("MINIO_USE_SSL") == "true" {
+		minioSecure = true
+	}
 
 	var minioClient *storage.MinIOClient
 	if minioEndpoint != "" && minioAccessKey != "" && minioSecretKey != "" && minioBucket != "" {
-		log.Printf("[MinIO] Connecting to MinIO endpoint %s (bucket: %s)...\n", minioEndpoint, minioBucket)
-		minioClient, err = storage.NewMinIOClient(minioEndpoint, minioAccessKey, minioSecretKey, minioBucket)
+		log.Printf("[MinIO] Connecting to MinIO endpoint %s (bucket: %s, secure: %t)...\n", minioEndpoint, minioBucket, minioSecure)
+		minioClient, err = storage.NewMinIOClient(minioEndpoint, minioAccessKey, minioSecretKey, minioBucket, minioSecure)
 		if err != nil {
 			log.Printf("[ERROR] MinIO initialization failed: %v\n", err)
 		} else {
@@ -81,26 +93,41 @@ func main() {
 	// Initialize API handlers with specific repositories and storage client
 	apiHandler := handlers.NewAPIHandler(userRepo, noteRepo, connRepo, minioClient)
 
-	// Create custom ServeMux for standard routing
-	mux := http.NewServeMux()
+	// Create Chi router for modern route handling
+	r := chi.NewRouter()
 
-	// Register routes
-	mux.HandleFunc("/api/auth/register", apiHandler.Register)
-	mux.HandleFunc("/api/auth/login", apiHandler.Login)
-	mux.HandleFunc("/api/health", apiHandler.Health)
+	// Public routes
+	r.Post("/api/auth/register", apiHandler.Register)
+	r.Post("/api/auth/login", apiHandler.Login)
+	r.Get("/api/health", apiHandler.Health)
 	
-	// Protected routes
-	mux.Handle("/api/auth/grant-access", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.GrantAccess)))
-	mux.Handle("/api/notes", middleware.AuthMiddleware(apiHandler.RBACMiddleware(http.HandlerFunc(apiHandler.HandleNotes))))
-	mux.Handle("/api/env-notes", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleEnvNotes)))
-	mux.Handle("/api/connections", middleware.AuthMiddleware(apiHandler.RBACMiddleware(http.HandlerFunc(apiHandler.HandleConnections))))
-	
-	// File URL routes (protected by AuthMiddleware)
-	mux.Handle("/api/files/upload-url", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleUploadURL)))
-	mux.Handle("/api/files/download-url/", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.HandleDownloadURL)))
+	// Protected routes group
+	r.Group(func(r chi.Router) {
+		r.Use(func(next http.Handler) http.Handler {
+			return middleware.AuthMiddleware(next)
+		})
+
+		r.Post("/api/auth/grant-access", apiHandler.GrantAccess)
+		r.Post("/api/sync", apiHandler.HandleSync)
+		r.Get("/api/env-notes", apiHandler.HandleEnvNotes)
+		r.Post("/api/env-notes", apiHandler.HandleEnvNotes)
+		
+		// Routes protected by both JWT Auth and RBAC
+		r.Group(func(r chi.Router) {
+			r.Use(apiHandler.RBACMiddleware)
+			r.Get("/api/notes", apiHandler.HandleNotes)
+			r.Post("/api/notes", apiHandler.HandleNotes)
+			r.Get("/api/connections", apiHandler.HandleConnections)
+			r.Post("/api/connections", apiHandler.HandleConnections)
+		})
+		
+		// File URL routes (protected by AuthMiddleware)
+		r.Post("/api/files/upload-url", apiHandler.HandleUploadURL)
+		r.Get("/api/files/download-url/{id}", apiHandler.HandleDownloadURL)
+	})
 
 	// Apply Middlewares (Logging + CORS)
-	var handler http.Handler = mux
+	var handler http.Handler = r
 	handler = middleware.CORSMiddleware(handler)
 	handler = middleware.LoggingMiddleware(handler)
 

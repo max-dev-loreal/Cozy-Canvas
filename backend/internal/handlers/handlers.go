@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"cozy-canvas/backend/internal/storage"
 	"cozy-canvas/backend/internal/store"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -136,7 +139,8 @@ func (a *APIHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "default-secret-change-me"
+		a.writeJSON(w, http.StatusInternalServerError, models.AuthResponse{Status: "error", Message: "JWT secret not configured on server"})
+		return
 	}
 
 	tokenString, err := token.SignedString([]byte(jwtSecret))
@@ -353,7 +357,8 @@ func (a *APIHandler) GrantAccess(w http.ResponseWriter, r *http.Request) {
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "default-secret-change-me"
+		a.writeJSON(w, http.StatusInternalServerError, models.AuthResponse{Status: "error", Message: "JWT secret not configured on server"})
+		return
 	}
 
 	tokenString, err := token.SignedString([]byte(jwtSecret))
@@ -418,8 +423,16 @@ func (a *APIHandler) HandleUploadURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clean filename using path.Base and filepath.ToSlash to prevent Path Traversal
+	cleanFilename := path.Base(filepath.ToSlash(req.Filename))
+	cleanFilename = strings.ReplaceAll(cleanFilename, "..", "")
+	if cleanFilename == "." || cleanFilename == "/" || cleanFilename == "" {
+		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid filename"})
+		return
+	}
+
 	// Generate a unique object name in bucket: format "unixnano-filename" to prevent duplicates
-	objectName := fmt.Sprintf("%d-%s", time.Now().UnixNano(), req.Filename)
+	objectName := fmt.Sprintf("%d-%s", time.Now().UnixNano(), cleanFilename)
 
 	if a.Storage == nil {
 		a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Storage service not initialized"})
@@ -445,9 +458,9 @@ func (a *APIHandler) HandleDownloadURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse object ID (filename) from prefix path /api/files/download-url/{id}
-	objectName := strings.TrimPrefix(r.URL.Path, "/api/files/download-url/")
-	if objectName == "" || objectName == r.URL.Path {
+	// Safely retrieve the file ID path parameter using Go Chi
+	objectName := chi.URLParam(r, "id")
+	if objectName == "" {
 		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "File ID is required"})
 		return
 	}
@@ -467,4 +480,32 @@ func (a *APIHandler) HandleDownloadURL(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]string{
 		"downloadUrl": downloadURL,
 	})
+}
+
+// HandleSync implements the /api/sync endpoint for atomic save of the notes & connections graph
+func (a *APIHandler) HandleSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	userID, err := a.getUserID(r)
+	if err != nil {
+		a.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "User not found"})
+		return
+	}
+
+	var req models.SyncRequest
+	if err := a.readJSON(r, &req); err != nil {
+		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return
+	}
+
+	err = a.Notes.SyncGraph(userID, req.Notes, req.Connections)
+	if err != nil {
+		a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	a.writeJSON(w, http.StatusOK, map[string]string{"status": "synchronized"})
 }

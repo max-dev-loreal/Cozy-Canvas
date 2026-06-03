@@ -14,6 +14,6 @@ fi
 
 echo "Creating note..."
 curl -s -X POST -H "Authorization: Bearer $TOKEN_A" -H "Content-Type: application/json" \
-  -d '[{"id":"note_a_1","text":"Secret credentials for User A","x":120,"y":340}]' \
-  "$API_URL/api/notes"
+  -d '{"notes":[{"id":"note_a_1","text":"Secret credentials for User A","x":120,"y":340}],"connections":[]}' \
+  "$API_URL/api/sync"
 echo -e "\nNote created for User A.\n"
