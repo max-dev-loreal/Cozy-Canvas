@@ -160,11 +160,11 @@ const dbService = {
     }
   },
 
-  async saveNotes(notesList) {
+  async sync() {
     try {
-      await apiFetch('/api/notes', 'POST', notesList);
+      await apiFetch('/api/sync', 'POST', { notes, connections });
     } catch (e) {
-      console.warn('API unavailable. Failed to save notes.');
+      console.warn('API unavailable. Failed to synchronize graph.');
     }
   },
 
@@ -196,14 +196,6 @@ const dbService = {
       console.warn('API unavailable. Failed to retrieve connections.');
       return [];
     }
-  },
-
-  async saveConnections(connectionsList) {
-    try {
-      await apiFetch('/api/connections', 'POST', connectionsList);
-    } catch (e) {
-      console.warn('API unavailable. Failed to save connections.');
-    }
   }
 };
 
@@ -214,6 +206,7 @@ const dbService = {
 async function init() {
   // Session tokens are restored only from sessionStorage
   // to reduce persistence and limit exposure.
+  authToken = sessionStorage.getItem('cozy-canvas-token') || null;
   currentUser = sessionStorage.getItem('cozy-canvas-user') || null;
   updateLoginUI();
 
@@ -355,23 +348,18 @@ function renderNotes() {
     textEl.className = 'note-text';
     textEl.contentEditable = 'true';
     textEl.textContent = note.text;
-    textEl.addEventListener('input', async (e) => {
+    textEl.addEventListener('input', (e) => {
       note.text = e.target.textContent;
-      if (currentMode === 'notes') {
-        await dbService.saveNotes(notes);
-      } else {
-        await dbService.saveEnvNotes(envNotes);
-      }
     });
     textEl.addEventListener('blur', async () => {
       if (!note.text.trim()) {
         note.text = 'Note...';
         textEl.textContent = 'Note...';
-        if (currentMode === 'notes') {
-          await dbService.saveNotes(notes);
-        } else {
-          await dbService.saveEnvNotes(envNotes);
-        }
+      }
+      if (currentMode === 'notes') {
+        await dbService.sync();
+      } else {
+        await dbService.saveEnvNotes(envNotes);
       }
     });
 
@@ -461,7 +449,7 @@ function renderNotes() {
           note.text += attachmentText;
           textEl.textContent = note.text;
           
-          await dbService.saveNotes(notes);
+          await dbService.sync();
           showToast('🌸 File attached successfully!');
           renderNotes();
         } catch (err) {
@@ -601,7 +589,7 @@ async function deleteConnection(sId, tId) {
     const currTId = typeof conn.target === 'object' ? conn.target.id : conn.target;
     return !((currSId === sId && currTId === tId) || (currSId === tId && currTId === sId));
   });
-  await dbService.saveConnections(connections);
+  await dbService.sync();
   renderNotes();
   if (physicsEnabled && simulation) {
     updatePhysicsSimulationLinks();
@@ -625,7 +613,7 @@ async function createConnection(sId, tId) {
   }
 
   connections.push({ source: sId, target: tId });
-  await dbService.saveConnections(connections);
+  await dbService.sync();
 
   if (physicsEnabled && simulation) {
     updatePhysicsSimulationLinks();
@@ -656,7 +644,7 @@ async function addNote(x, y) {
     await dbService.saveEnvNotes(envNotes);
   } else {
     notes.push(newNote);
-    await dbService.saveNotes(notes);
+    await dbService.sync();
   }
   renderNotes();
 
@@ -687,15 +675,13 @@ async function deleteNote(id) {
     await dbService.saveEnvNotes(envNotes);
   } else {
     notes = notes.filter(n => n.id !== id);
-    await dbService.saveNotes(notes);
+    connections = connections.filter(conn => {
+      const sId = typeof conn.source === 'object' ? conn.source.id : conn.source;
+      const tId = typeof conn.target === 'object' ? conn.target.id : conn.target;
+      return sId !== id && tId !== id;
+    });
+    await dbService.sync();
   }
-
-  connections = connections.filter(conn => {
-    const sId = typeof conn.source === 'object' ? conn.source.id : conn.source;
-    const tId = typeof conn.target === 'object' ? conn.target.id : conn.target;
-    return sId !== id && tId !== id;
-  });
-  await dbService.saveConnections(connections);
   renderNotes();
 
   if (physicsEnabled) {
@@ -712,6 +698,14 @@ function setupEventListeners() {
     if (e.code === 'Space') {
       isSpacePressed = true;
       viewport.style.cursor = 'grab';
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      if (currentMode === 'notes') {
+        dbService.sync().then(() => showToast('🌸 Canvas saved successfully!'));
+      } else {
+        dbService.saveEnvNotes(envNotes).then(() => showToast('⚙️ Environment saved successfully!'));
+      }
     }
     if (e.key === 'Escape') {
       if (!loginModal.classList.contains('hidden')) {
@@ -841,7 +835,7 @@ function setupEventListeners() {
       }
       activeDragNoteId = null;
       viewport.classList.remove('dragging-active');
-      dbService.saveNotes(notes);
+      dbService.sync();
     }
   });
 

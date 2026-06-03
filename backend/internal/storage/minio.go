@@ -14,12 +14,11 @@ type MinIOClient struct {
 	bucketName string
 }
 
-func NewMinIOClient(endpoint, accessKey, secretKey, bucketName string) (*MinIOClient, error) {
+func NewMinIOClient(endpoint, accessKey, secretKey, bucketName string, secure bool) (*MinIOClient, error) {
 	// Initialize minio client object.
-	// Secure is false by default for local development.
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: false,
+		Secure: secure,
 	})
 	if err != nil {
 		return nil, err

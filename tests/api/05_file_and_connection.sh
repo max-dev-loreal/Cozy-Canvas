@@ -12,22 +12,12 @@ if [ -z "$TOKEN_A" ]; then
   exit 1
 fi
 
-# 1. Create two notes for User A (needed for connection)
-echo "Creating first note (note_a_1)..."
+# 1. Create notes and connection atomically using /api/sync
+echo "Synchronizing graph (notes and connection)..."
 curl -s -X POST -H "Authorization: Bearer $TOKEN_A" -H "Content-Type: application/json" \
-  -d '[{"id":"note_a_1","text":"Note A1","x":100,"y":100}]' \
-  "$API_URL/api/notes"
-echo -e "\nCreating second note (note_a_2)..."
-curl -s -X POST -H "Authorization: Bearer $TOKEN_A" -H "Content-Type: application/json" \
-  -d '[{"id":"note_a_2","text":"Note A2","x":200,"y":200}]' \
-  "$API_URL/api/notes"
-
-# 2. Create connection between note_a_1 and note_a_2
-echo -e "\nCreating connection..."
-curl -s -X POST -H "Authorization: Bearer $TOKEN_A" -H "Content-Type: application/json" \
-  -d '[{"id":"note_a_1-note_a_2","source":"note_a_1","target":"note_a_2"}]' \
-  "$API_URL/api/connections"
-echo -e "\nConnection created successfully."
+  -d '{"notes":[{"id":"note_a_1","text":"Note A1","x":100,"y":100},{"id":"note_a_2","text":"Note A2","x":200,"y":200}],"connections":[{"id":"note_a_1-note_a_2","source":"note_a_1","target":"note_a_2"}]}' \
+  "$API_URL/api/sync"
+echo -e "\nGraph synchronized successfully."
 
 # 3. Request presigned upload URL
 echo -e "\nRequesting presigned upload URL..."
