@@ -3,6 +3,8 @@ package store
 import (
 	"cozy-canvas/backend/internal/models"
 	"database/sql"
+	"time"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -40,4 +42,23 @@ func (r *pgUserRepository) GetUserIDByUsername(username string) (int, error) {
 	var id int
 	err := r.db.QueryRow("SELECT id FROM users WHERE username = $1", username).Scan(&id)
 	return id, err
+}
+
+func (r *pgUserRepository) CreateAccessGrant(ownerUserID, viewerUserID int, expiresAt time.Time) error {
+	// Clean up any existing grants between these two users first
+	_, _ = r.db.Exec("DELETE FROM access_grants WHERE owner_user_id = $1 AND viewer_user_id = $2", ownerUserID, viewerUserID)
+
+	_, err := r.db.Exec("INSERT INTO access_grants (owner_user_id, viewer_user_id, code_word_verified, expires_at) VALUES ($1, $2, true, $3)",
+		ownerUserID, viewerUserID, expiresAt)
+	return err
+}
+
+func (r *pgUserRepository) VerifyAccessGrant(ownerUserID, viewerUserID int) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM access_grants 
+			WHERE owner_user_id = $1 AND viewer_user_id = $2 AND expires_at > NOW()
+		)`, ownerUserID, viewerUserID).Scan(&exists)
+	return exists, err
 }
