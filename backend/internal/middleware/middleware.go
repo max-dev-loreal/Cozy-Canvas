@@ -110,7 +110,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		tokenString := parts[1]
 		jwtSecret := os.Getenv("JWT_SECRET")
 		if jwtSecret == "" {
-			jwtSecret = "default-secret-change-me"
+			http.Error(w, "JWT secret configuration missing on server", http.StatusInternalServerError)
+			return
 		}
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

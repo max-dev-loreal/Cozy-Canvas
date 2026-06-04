@@ -71,3 +71,9 @@ type GrantAccessRequest struct {
 	Password string `json:"password"`
 	Codeword string `json:"codeword"`
 }
+
+// SyncRequest represents the unified payload containing notes and connections for atomic sync
+type SyncRequest struct {
+	Notes       []Note       `json:"notes"`
+	Connections []Connection `json:"connections"`
+}

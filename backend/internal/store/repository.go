@@ -20,6 +20,7 @@ type NoteRepository interface {
 	SaveNotes(userID int, notes []models.Note) error
 	GetEnvNotes() ([]models.Note, error)
 	SaveEnvNotes(notes []models.Note) error
+	SyncGraph(userID int, notes []models.Note, conns []models.Connection) error
 }
 
 // ConnectionRepository handles node connections persistence
