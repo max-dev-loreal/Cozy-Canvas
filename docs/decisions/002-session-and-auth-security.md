@@ -11,7 +11,7 @@ The Cozy Canvas system allows users to create personal boards/canvases, add inte
 
 ## Decision
 We implemented a multi-layered security system consisting of:
-1. **Adaptive Password Hashing**: Passwords stored in the database are hashed using **bcrypt** (cost parameter 10). Plaintext passwords are never logged, stored, or processed beyond the authentication endpoint.
+1. **Adaptive Password Hashing**: Passwords stored in the database are hashed using **bcrypt** (cost parameter 12). Plaintext passwords are never logged, stored, or processed beyond the authentication endpoint.
 2. **Stateless JWT Tokens**: Upon successful authentication, the backend generates a JSON Web Token (JWT) signed using a secure symmetric HS256 key (`JWT_SECRET`). The token payload contains the user's ID (`user_id`) and name (`username`). 
 3. **HTTP Context Propagation**: A middleware inspects the `Authorization: Bearer <token>` header, validates the signature, extracts the claims, and injects them directly into the Go `http.Request` context for downstream handlers.
 4. **Temporary Access Grants**: For accessing connected foreign notes, we implemented a dedicated DB table tracking explicit read-only access grants, verified via middleware before accessing notes owned by other users.
