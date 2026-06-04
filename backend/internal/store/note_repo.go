@@ -15,7 +15,7 @@ func NewPGNoteRepository(db *sql.DB) NoteRepository {
 }
 
 func (r *pgNoteRepository) GetNotes(userID int) ([]models.Note, error) {
-	rows, err := r.db.Query("SELECT id, text, x, y, is_env FROM notes WHERE user_id = $1 AND is_env = false", userID)
+	rows, err := r.db.Query("SELECT id, text, context, x, y, is_env FROM notes WHERE user_id = $1 AND is_env = false", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +24,7 @@ func (r *pgNoteRepository) GetNotes(userID int) ([]models.Note, error) {
 	var list []models.Note
 	for rows.Next() {
 		var n models.Note
-		if err := rows.Scan(&n.ID, &n.Text, &n.X, &n.Y, &n.IsEnv); err != nil {
+		if err := rows.Scan(&n.ID, &n.Text, &n.Context, &n.X, &n.Y, &n.IsEnv); err != nil {
 			return nil, err
 		}
 		list = append(list, n)
@@ -49,8 +49,8 @@ func (r *pgNoteRepository) SaveNotes(userID int, notes []models.Note) error {
 	}
 
 	for _, n := range notes {
-		_, err = tx.Exec("INSERT INTO notes (id, user_id, text, x, y, is_env) VALUES ($1, $2, $3, $4, $5, false)",
-			n.ID, userID, n.Text, n.X, n.Y)
+		_, err = tx.Exec("INSERT INTO notes (id, user_id, text, context, x, y, is_env) VALUES ($1, $2, $3, $4, $5, $6, false)",
+			n.ID, userID, n.Text, n.Context, n.X, n.Y)
 		if err != nil {
 			return err
 		}
@@ -60,7 +60,7 @@ func (r *pgNoteRepository) SaveNotes(userID int, notes []models.Note) error {
 }
 
 func (r *pgNoteRepository) GetEnvNotes() ([]models.Note, error) {
-	rows, err := r.db.Query("SELECT id, text, x, y, is_env FROM notes WHERE is_env = true AND user_id IS NULL")
+	rows, err := r.db.Query("SELECT id, text, context, x, y, is_env FROM notes WHERE is_env = true AND user_id IS NULL")
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (r *pgNoteRepository) GetEnvNotes() ([]models.Note, error) {
 	var list []models.Note
 	for rows.Next() {
 		var n models.Note
-		if err := rows.Scan(&n.ID, &n.Text, &n.X, &n.Y, &n.IsEnv); err != nil {
+		if err := rows.Scan(&n.ID, &n.Text, &n.Context, &n.X, &n.Y, &n.IsEnv); err != nil {
 			return nil, err
 		}
 		list = append(list, n)
@@ -94,8 +94,8 @@ func (r *pgNoteRepository) SaveEnvNotes(notes []models.Note) error {
 	}
 
 	for _, n := range notes {
-		_, err = tx.Exec("INSERT INTO notes (id, user_id, text, x, y, is_env) VALUES ($1, NULL, $2, $3, $4, true)",
-			n.ID, n.Text, n.X, n.Y)
+		_, err = tx.Exec("INSERT INTO notes (id, user_id, text, context, x, y, is_env) VALUES ($1, NULL, $2, $3, $4, $5, true)",
+			n.ID, n.Text, n.Context, n.X, n.Y)
 		if err != nil {
 			return err
 		}
@@ -125,8 +125,8 @@ func (r *pgNoteRepository) SyncGraph(userID int, notes []models.Note, conns []mo
 
 	// 3. Insert new notes (ignoring any pre-existing user_id, binding strictly to the authenticated JWT userID)
 	for _, n := range notes {
-		_, err = tx.Exec("INSERT INTO notes (id, user_id, text, x, y, is_env) VALUES ($1, $2, $3, $4, $5, false)",
-			n.ID, userID, n.Text, n.X, n.Y)
+		_, err = tx.Exec("INSERT INTO notes (id, user_id, text, context, x, y, is_env) VALUES ($1, $2, $3, $4, $5, $6, false)",
+			n.ID, userID, n.Text, n.Context, n.X, n.Y)
 		if err != nil {
 			return err
 		}

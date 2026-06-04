@@ -14,6 +14,7 @@ import (
 	"cozy-canvas/backend/internal/models"
 	"cozy-canvas/backend/internal/storage"
 	"cozy-canvas/backend/internal/store"
+	"cozy-canvas/backend/internal/utils"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
@@ -191,6 +192,12 @@ func (a *APIHandler) HandleNotes(w http.ResponseWriter, r *http.Request) {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
+
+		// Populate HTML on-the-fly for response
+		for i := range notes {
+			notes[i].HTML = utils.RenderMarkdown(notes[i].Text)
+		}
+
 		a.writeJSON(w, http.StatusOK, notes)
 
 	case http.MethodPost:
@@ -228,6 +235,12 @@ func (a *APIHandler) HandleEnvNotes(w http.ResponseWriter, r *http.Request) {
 			a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
+
+		// Populate HTML on-the-fly for response
+		for i := range envList {
+			envList[i].HTML = utils.RenderMarkdown(envList[i].Text)
+		}
+
 		a.writeJSON(w, http.StatusOK, envList)
 
 	case http.MethodPost:

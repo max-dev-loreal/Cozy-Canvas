@@ -18,6 +18,8 @@ type Note struct {
 	ID        string    `json:"id" db:"id"`
 	UserID    *int      `json:"user_id,omitempty" db:"user_id"` // Pointer because it can be NULL for global envs
 	Text      string    `json:"text" db:"text"`
+	HTML      string    `json:"html,omitempty"`
+	Context   string    `json:"context" db:"context"`
 	X         float64   `json:"x" db:"x"`
 	Y         float64   `json:"y" db:"y"`
 	IsEnv     bool      `json:"isEnv" db:"is_env"`
